@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>전제 검증</title>
+<link rel="stylesheet" href="assets/theme.css">
+<link rel="stylesheet" href="assets/photo.css">
+<style>
+  .checks{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:9px}
+  .chk-row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:11px;align-items:start;
+    padding:12px 14px;border-radius:14px;background:#f8f9ff;border:1px solid #eceefb}
+  .chk-row.pass{border-left:5px solid var(--ok)}
+  .chk-row.fail{border-left:5px solid var(--crit)}
+  .chk-row.skip{border-left:5px solid #c3c7e4}
+  .chk-row .n{font:700 12px var(--font-display);color:var(--sub);padding-top:2px}
+  .chk-row .t{font-size:13.5px;font-weight:700;line-height:1.5}
+  .chk-row .d{font-size:12px;color:var(--sub);margin-top:3px;line-height:1.6;word-break:break-word}
+  .chk-row pre{margin:6px 0 0;font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace;
+    background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+    max-height:170px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .fields{display:grid;gap:12px;max-width:620px}
+  .fields label{display:grid;gap:5px;font-size:12px;font-weight:600;color:var(--sub)}
+  .fields input{font:500 14px var(--font-body);padding:10px 13px;border:1px solid #dcdff0;
+    border-radius:12px;background:#f8f9ff;outline:none}
+  .fields input:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(91,91,240,.14);background:#fff}
+  #imgOut{max-width:150px;border-radius:12px;border:1px solid var(--line);margin-top:8px;display:block}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-in">
+    <span class="eyebrow">STEP 0 · PRE-FLIGHT</span>
+    <h1>Pre-flight <em>Checks</em></h1>
+    <p class="ko">전제 검증</p>
+    <p class="desc">본 구현에 들어가기 전에 반드시 통과해야 하는 6가지를 실제 호출로 확인합니다.<br>
+      하나라도 실패하면 설계를 바꿔야 하므로, 코드 작성 전에 여기부터 돌립니다.</p>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2><span class="num">01</span><span class="rname">입력</span>
+      <span class="hint">토큰은 이 브라우저 안에서만 쓰이고 어디에도 저장·전송되지 않습니다.</span></h2>
+    <div class="fields">
+      <label>업체용 토큰 (저장소 1개 한정, Contents: Read and write)
+        <input id="tok" type="password" placeholder="github_pat_...  또는  ghp_...">
+      </label>
+      <label>이 토큰이 접근 가능한 저장소 (owner/repo)
+        <input id="repoOk" type="text" placeholder="myaccount/mp-s1" autocapitalize="off" spellcheck="false">
+      </label>
+      <label>접근 불가여야 하는 다른 비공개 저장소 (owner/repo)
+        <input id="repoNo" type="text" placeholder="myaccount/mp-s2" autocapitalize="off" spellcheck="false">
+      </label>
+      <p class="hint" style="margin:-2px 0 0">
+        메뉴 API 주소와 사업장 코드는 위 저장소의 <code>config.json</code>에서 읽습니다.
+        이 페이지는 공개 저장소에 올라가므로 식별정보를 담지 않습니다.</p>
+      <div class="row" style="margin:2px 0 0">
+        <button id="run" class="go" style="border:0;color:#fff;background:linear-gradient(120deg,var(--brand),var(--brand2));padding:12px 26px;font-weight:700">검증 실행</button>
+        <span class="hint" id="status"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="num">02</span><span class="rname">결과</span>
+      <span class="hint">실패 항목의 원문 응답을 그대로 보여줍니다.</span></h2>
+    <ul class="checks" id="out">
+      <li class="chk-row skip"><div class="n">–</div><div><div class="t">아직 실행 전입니다</div>
+        <div class="d">위에 값을 채우고 <b>검증 실행</b>을 누르세요.</div></div><div></div></li>
+    </ul>
+  </section>
+</main>
+
+<script src="js/github-api.js"></script>
+<script src="js/menu-api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const out = $('out');
+let rows = [];
+
+function render(){
+  out.innerHTML = rows.map((r,i)=>`
+    <li class="chk-row ${r.state}">
+      <div class="n">${String(i+1).padStart(2,'0')}</div>
+      <div>
+        <div class="t">${r.title}</div>
+        <div class="d">${r.detail||''}</div>
+        ${r.raw?`<pre>${esc(r.raw)}</pre>`:''}
+        ${r.img?`<img id="imgOut" src="${r.img}" alt="">`:''}
+      </div>
+      <div><span class="pill ${r.state==='pass'?'ok':r.state==='fail'?'bad':''}">${
+        r.state==='pass'?'통과':r.state==='fail'?'실패':'진행중'}</span></div>
+    </li>`).join('');
+}
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function add(title){ rows.push({title,state:'skip',detail:'확인 중…'}); render(); return rows.length-1; }
+function pass(i,detail,raw){ rows[i].state='pass'; rows[i].detail=detail; rows[i].raw=raw; render(); }
+function fail(i,detail,raw){ rows[i].state='fail'; rows[i].detail=detail; rows[i].raw=raw; render(); }
+const short = o => JSON.stringify(o,null,1).slice(0,900);
+
+$('run').onclick = async () => {
+  const tok=$('tok').value.trim(), ok=$('repoOk').value.trim().replace(/^\/|\/$/g,''),
+        no=$('repoNo').value.trim().replace(/^\/|\/$/g,'');
+  if(!tok||!ok){ $('status').textContent='토큰과 접근 가능 저장소는 필수입니다.'; return; }
+  $('run').disabled=true; $('status').textContent='실행 중…';
+  rows=[]; render();
+  GH.setToken(tok);
+  const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+  const probe = 'poc/'+stamp+'.txt';
+
+  /* 1. 쓰기 + CORS 프리플라이트 */
+  let i = add('github.io 에서 PUT /contents 성공 (CORS 프리플라이트 포함)');
+  let wroteSha = null;
+  try{
+    const blob = new Blob(['pre-flight '+stamp], {type:'text/plain'});
+    const r = await GH.putFile(ok, probe, blob, 'pre-flight check');
+    wroteSha = r && r.content && r.content.sha;
+    pass(i, '업로드 성공 — Authorization 헤더가 붙은 교차 출처 PUT 이 통과했습니다. 커밋: '
+            + (r && r.commit ? r.commit.sha.slice(0,7) : '?'));
+  }catch(e){
+    fail(i, '실패 — 이게 막히면 설계 전체가 성립하지 않습니다. 토큰 권한(Contents: Read and write)과 저장소명을 확인하세요.', e.message+'\n'+short(e.payload||{}));
+    $('run').disabled=false; $('status').textContent='중단됨'; return;
+  }
+
+  /* 2. 다른 비공개 저장소는 404 */
+  i = add('다른 식당 저장소는 조회조차 불가 (404)');
+  if(!no){ rows[i].state='skip'; rows[i].detail='두 번째 저장소를 입력하지 않아 건너뜁니다. 이 항목은 요구사항의 핵심이므로 꼭 확인하세요.'; render(); }
+  else{
+    try{
+      const res = await GH._raw('/repos/'+no);
+      if(res.status===404) pass(i,'404 — 저장소의 존재 자체가 보이지 않습니다. 격리 요구사항 충족.');
+      else if(res.status===403) fail(i,'403 이 돌아왔습니다. 존재는 드러납니다. 토큰 범위를 다시 확인하세요.');
+      else fail(i,'HTTP '+res.status+' — 이 토큰이 다른 저장소를 읽을 수 있습니다. 토큰 범위가 잘못됐습니다.');
+    }catch(e){ fail(i,'확인 실패', e.message); }
+  }
+
+  /* 3. 토큰이 노출하는 계정 정보 */
+  i = add('업체가 토큰으로 알 수 있는 정보');
+  try{
+    const u = await GH.me();
+    const rp = await GH.myRepos();
+    pass(i, '아래 내용이 업체에게 보입니다. 개인 계정이면 신원이 드러나므로 전용 계정을 쓰세요. 보이는 저장소 '
+            + rp.length + '개.',
+      'login: '+u.login+'\nname: '+(u.name||'(없음)')+'\nrepos: '+rp.map(r=>r.full_name).join(', '));
+  }catch(e){ fail(i,'조회 실패', e.message); }
+
+  /* 4. raw 이미지 읽기 */
+  i = add('비공개 저장소 파일을 raw 로 받아 화면에 표시');
+  try{
+    const txt = await GH.getText(ok, probe);
+    pass(i, 'Accept: application/vnd.github.raw 로 본문을 바로 받았습니다. base64 를 거치지 않아도 됩니다.', txt);
+  }catch(e){ fail(i,'실패 — 사진 표시 방식을 download_url 로 바꿔야 합니다.', e.message); }
+
+  /* 5. Contents 권한만으로 부모 없는 커밋 + force ref */
+  i = add('Contents 권한만으로 히스토리 축소 (부모 없는 커밋 + force)');
+  try{
+    const c = await GH.collapseHistory(ok, { message: 'pre-flight: reset history' });
+    pass(i, '성공 — 부모 없는 커밋 '+c.sha.slice(0,7)+' 로 ref 를 강제 갱신했습니다. 보존 전략을 쓸 수 있습니다.');
+  }catch(e){
+    fail(i, '실패 — 히스토리 축소를 쓸 수 없습니다. 저장소 용량 관리는 "분기 재생성"만으로 가야 합니다. (룰셋이 force push 를 막고 있을 수 있습니다.)', e.message+'\n'+short(e.payload||{}));
+  }
+
+  /* 6. 메뉴 API 외부 도달 — 주소·코드는 config.json 에서 읽는다(공개 번들에 식별정보를 넣지 않기 위해).
+        실제 화면과 같은 MENU.fetchSlots 를 쓰므로 필터까지 한 번에 검증된다 */
+  i = add('메뉴 API 외부 도달 + 대상 메뉴 추출 (이 기기의 네트워크에서)');
+  try{
+    const cfg = await GH.getJson(ok, 'config.json');
+    if(!cfg || !cfg.origin || !cfg.store){
+      fail(i, 'config.json 을 읽지 못했습니다. 저장소 루트에 먼저 올린 뒤 다시 실행하세요.',
+        cfg ? JSON.stringify(cfg) : '(파일 없음)');
+    } else {
+      const slots = await MENU.fetchSlots(cfg, MENU.dateStr(), 2);
+      if(slots.length){
+        pass(i, '중식 대상 메뉴 '+slots.length+'건을 받았습니다. 이 네트워크에서 메뉴가 보입니다.',
+          slots.slice(0,5).map(s=>'· '+s.name+(s.appThumb?'  [앱 사진 있음]':'  [앱 사진 없음]')).join('\n'));
+      } else {
+        fail(i, '응답은 왔지만 대상 메뉴가 0건입니다. config.json 의 코드 값이나 오늘 메뉴 등록 상태를 확인하세요.');
+      }
+    }
+  }catch(e){
+    fail(i, '실패 — 이 네트워크에서는 메뉴를 못 불러옵니다. 업체 기기에서 이 페이지를 다시 돌려보세요.', e.message);
+  }
+
+  /* 뒷정리 */
+  i = add('검증용 파일 정리');
+  try{
+    const t = await GH.tree(ok,'main');
+    const junk = t.entries.filter(e=>e.type==='blob' && e.path.indexOf('poc/')===0).map(e=>e.path);
+    if(junk.length){ await GH.batchCommit(ok,{deletePaths:junk, message:'pre-flight: cleanup'});
+      pass(i, junk.length+'개 파일을 커밋 1개로 일괄 삭제했습니다. 일괄 삭제 경로도 함께 검증됐습니다.'); }
+    else pass(i,'지울 파일이 없습니다.');
+  }catch(e){ fail(i,'정리 실패 — 저장소에서 poc/ 폴더를 직접 지우세요.', e.message); }
+
+  const bad = rows.filter(r=>r.state==='fail').length;
+  $('status').textContent = bad ? (bad+'건 실패 — 설계 조정이 필요합니다.') : '전부 통과했습니다.';
+  $('run').disabled=false;
+};
+</script>
+</body>
+</html>
