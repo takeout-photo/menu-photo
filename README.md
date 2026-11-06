@@ -116,6 +116,7 @@ Settings → Developer settings → **Fine-grained personal access tokens** → 
 
 - `Contents` 외에는 아무것도 켜지 마세요. Metadata(읽기)는 자동으로 붙습니다.
 - **만료일을 달력에 적어두세요.** 6곳이 같은 날 한꺼번에 끊깁니다. 만료 30일 전에 재발급합니다.
+  실제 날짜는 공개 저장소가 아니라 토큰 대장에 적습니다.
 - 발급 화면을 벗어나면 토큰을 다시 볼 수 없습니다.
 
 ### 2-5. 배포

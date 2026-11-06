@@ -278,34 +278,57 @@
   /* ---------- Git Data 일괄 커밋 ----------
      삭제 141건을 DELETE 141콜로 하면 시간당 content-creating 한도(500)를 먹는다.
      base_tree 를 둔 트리에서 sha:null 인 항목은 삭제를 뜻한다 → 커밋 1개로 끝낸다. */
+  /* ref → commit → tree → commit → ref 는 원자적이지 않다. head 를 읽은 뒤
+     누가 끼어들면(협력사 사진 업로드, 직전 이력 축소 후 ref 전파 지연)
+     마지막 PATCH 가 422 'Update is not a fast forward' 로 거절된다.
+     force 로 밀면 그 사이에 들어온 사진 커밋이 사라지므로, head 를 다시 읽어
+     처음부터 다시 쌓는다. 마감은 협력사가 올리는 중에도 돌아갈 수 있다 */
+  function isNotFastForward(e) {
+    if (!e || e.status !== 422) return false;
+    var m = String((e.payload && e.payload.message) || e.message || '').toLowerCase();
+    return m.indexOf('fast forward') >= 0 || m.indexOf('fast-forward') >= 0;
+  }
+
   function batchCommit(full, opt) {
+    opt = opt || {};
     var branch = opt.branch || 'main';
     var deletePaths = opt.deletePaths || [];
     var message = opt.message || 'batch update';
+    if (!deletePaths.length) return Promise.resolve(null);
+
     return serial(function () {
       return withRetry(async function () {
-        var ref = await req('/repos/' + full + '/git/ref/heads/' + encodeURIComponent(branch));
-        var head = ref.object.sha;
-        var commit = await req('/repos/' + full + '/git/commits/' + head);
+        var last = null;
+        for (var attempt = 0; attempt < 3; attempt++) {
+          var ref = await req('/repos/' + full + '/git/ref/heads/' + encodeURIComponent(branch));
+          var head = ref.object.sha;
+          var commit = await req('/repos/' + full + '/git/commits/' + head);
 
-        var entries = deletePaths.map(function (p) {
-          return { path: p, mode: '100644', type: 'blob', sha: null };
-        });
-        if (!entries.length) return null;
+          var entries = deletePaths.map(function (p) {
+            return { path: p, mode: '100644', type: 'blob', sha: null };
+          });
 
-        var newTree = await req('/repos/' + full + '/git/trees', {
-          method: 'POST',
-          body: { base_tree: commit.tree.sha, tree: entries }
-        });
-        var newCommit = await req('/repos/' + full + '/git/commits', {
-          method: 'POST',
-          body: { message: message, tree: newTree.sha, parents: [head] }
-        });
-        await req('/repos/' + full + '/git/refs/heads/' + encodeURIComponent(branch), {
-          method: 'PATCH',
-          body: { sha: newCommit.sha }
-        });
-        return newCommit;
+          var newTree = await req('/repos/' + full + '/git/trees', {
+            method: 'POST',
+            body: { base_tree: commit.tree.sha, tree: entries }
+          });
+          var newCommit = await req('/repos/' + full + '/git/commits', {
+            method: 'POST',
+            body: { message: message, tree: newTree.sha, parents: [head] }
+          });
+          try {
+            await req('/repos/' + full + '/git/refs/heads/' + encodeURIComponent(branch), {
+              method: 'PATCH',
+              body: { sha: newCommit.sha }
+            });
+            return newCommit;
+          } catch (e) {
+            if (!isNotFastForward(e)) throw e;   // force 는 쓰지 않는다
+            last = e;
+            await sleep(700 * (attempt + 1));
+          }
+        }
+        throw last;
       });
     });
   }
