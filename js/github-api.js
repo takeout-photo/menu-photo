@@ -72,6 +72,12 @@
       res = await fetch(url, {
         method: opt.method || 'GET',
         headers: h,
+        /* GitHub API 응답은 Cache-Control: private, max-age=60 을 달고 온다.
+           그대로 두면 ref 를 옮긴 직후에도 브라우저가 60초간 예전 sha 를
+           돌려준다 → 그 sha 를 부모로 커밋을 만들면 ref 갱신이 422
+           'Update is not a fast forward' 로 거절된다(poc 7번 실패 원인).
+           사진도 캐시에 안 남아 공용 기기 측면에서도 유리하다 */
+        cache: 'no-store',
         body: (opt.body === undefined || opt.body === null) ? null : JSON.stringify(opt.body)
         // credentials 는 기본값(same-origin) 그대로 둔다 — include 로 바꾸면 ACAO:* 와 충돌한다
       });
@@ -325,7 +331,7 @@
           } catch (e) {
             if (!isNotFastForward(e)) throw e;   // force 는 쓰지 않는다
             last = e;
-            await sleep(700 * (attempt + 1));
+            await sleep(1000 * (attempt + 1) * (attempt + 1));   // 1s, 4s — 진짜 동시 쓰기까지 기다린다
           }
         }
         throw last;
