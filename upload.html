@@ -52,6 +52,14 @@
       <div class="prog"><i id="progBar"></i></div>
       <p class="hint" id="progText" style="margin:0 0 14px">—</p>
 
+      <!-- 사내망 프록시는 올리는 요청만 막는다. 메뉴가 잘 보여 정상인 줄 알고 다 찍은 뒤에
+           전부 실패하는 게 최악이라, 찍기 전에 보이게 둔다 -->
+      <p class="lte-note">
+        <b><span class="nw">회사 WiFi 에서는</span> <span class="nw">사진이 올라가지 않습니다.</span></b>
+        폰의 <span class="nw">WiFi 를 끄고</span> <span class="nw">모바일 데이터(LTE)</span> 로 <span class="nw">바꾼 뒤</span> <span class="nw">올려 주세요.</span>
+        <span class="nw">메뉴 목록은 WiFi 에서도 보이지만,</span> <span class="nw">올리는 것만 막힙니다.</span>
+      </p>
+
       <div class="tabs" id="tabs"></div>
     </section>
 
@@ -358,7 +366,13 @@ async function upload(slotId, file){
     renderKpis();
   } catch (e) {
     busy(slotId, null);
-    alert(e.status === 401
+    /* 회사 망에서는 프록시가 올리는 요청을 막는다. 차단 응답에는 CORS 헤더가 없어
+       상태코드도 본문도 못 읽고 fetch 가 그냥 실패한다 → network 플래그로만 구분된다 */
+    alert(e.network
+      ? '사진을 올리지 못했습니다.\n\n회사 WiFi 에 연결돼 있으면 올라가지 않습니다.\n'
+        + '폰의 WiFi 를 끄고 모바일 데이터(LTE)로 바꾼 뒤 다시 눌러 주세요.\n'
+        + '지금까지 올라간 사진은 그대로 남아 있습니다.'
+      : e.status === 401
       ? '업로드 키가 만료된 것 같습니다. 담당자에게 새 키를 받아주세요.'
       : '업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.\n(' + e.message + ')');
   }

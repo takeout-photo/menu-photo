@@ -33,6 +33,18 @@
     return e;
   }
 
+  /* 네트워크 단에서 끊긴 요청. 사내 프록시가 업로드(본문 50KB 이상)를 막는 경우가 대표적이다.
+     프록시의 차단 응답에는 Access-Control-Allow-Origin 이 없어 브라우저가 CORS 단계에서
+     거부한다 → 상태코드도 본문(policy_denied)도 JS 로는 못 읽는다. 호출자가 권한 오류와
+     구분할 수 있도록 여기서 network 플래그를 달아 던진다 */
+  function NetError(cause) {
+    var e = new Error('네트워크에서 요청이 막혔거나 끊겼습니다');
+    e.name = 'NetworkError';
+    e.network = true;
+    e.cause = cause;
+    return e;
+  }
+
   /* 경로의 각 구간만 인코딩한다. encodeURIComponent 를 통째로 쓰면 '/' 가 %2F 가 되어 깨진다 */
   function encPath(p) {
     return String(p).split('/').filter(Boolean).map(encodeURIComponent).join('/');
@@ -55,12 +67,17 @@
     if (TOKEN) h['Authorization'] = 'Bearer ' + TOKEN;
     if (opt.body !== undefined && opt.body !== null) h['Content-Type'] = 'application/json';
 
-    var res = await fetch(url, {
-      method: opt.method || 'GET',
-      headers: h,
-      body: (opt.body === undefined || opt.body === null) ? null : JSON.stringify(opt.body)
-      // credentials 는 기본값(same-origin) 그대로 둔다 — include 로 바꾸면 ACAO:* 와 충돌한다
-    });
+    var res;
+    try {
+      res = await fetch(url, {
+        method: opt.method || 'GET',
+        headers: h,
+        body: (opt.body === undefined || opt.body === null) ? null : JSON.stringify(opt.body)
+        // credentials 는 기본값(same-origin) 그대로 둔다 — include 로 바꾸면 ACAO:* 와 충돌한다
+      });
+    } catch (e) {
+      throw NetError(e);   // 끊김·프록시 차단. isRetryable 은 status 를 보므로 재시도하지 않는다
+    }
     readRate(res);
     return res;
   }
