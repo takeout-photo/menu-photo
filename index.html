@@ -55,7 +55,7 @@
   <section class="card" id="setupCard">
     <h2><span class="num">01</span><span class="rname">관리자 키</span></h2>
     <div class="setup">
-      <p class="hint" style="margin:0 0 12px">6개 식당 저장소와 기록 저장소에 접근할 수 있는 키를 입력하세요.
+      <p class="hint" style="margin:0 0 12px">식당 저장소에 접근할 수 있는 키를 입력하세요.
         이 기기에만 저장됩니다.</p>
       <input id="tok" type="password" placeholder="관리자 키" autocomplete="off" spellcheck="false">
       <button class="go" id="login">열기</button>
@@ -66,7 +66,12 @@
   <div id="app" hidden>
     <section class="card">
       <h2><span class="num">01</span><span class="rname">오늘 현황</span>
+        <span class="pill" id="modePill" hidden>조회 전용</span>
         <span class="hint" id="rateHint"></span></h2>
+      <p class="hint" id="modeNote" hidden style="margin:-4px 0 14px">
+        <span class="nw">기록 저장소에 접근할 수 없는 키입니다.</span>
+        <span class="nw">맡은 식당의 현황만 조회할 수 있고,</span>
+        <span class="nw">마감·정리 기능은 쓸 수 없습니다.</span></p>
       <div class="date-row">
         <label class="f">조회 날짜<input type="date" id="date"></label>
         <button id="reload">새로고침</button>
@@ -91,7 +96,7 @@
       <ul class="missing" id="missing"></ul>
     </section>
 
-    <section class="card">
+    <section class="card" id="cardLedger">
       <h2><span class="num">04</span><span class="rname">누적 현황</span>
         <span class="hint">사진이 정리된 뒤에도 이 기록은 남습니다.</span></h2>
       <!-- 차트 SVG 는 width:100% 라 카드 폭을 그대로 먹는다.
@@ -110,7 +115,7 @@
       <p class="hint" id="ledgerNote" style="margin-top:10px"></p>
     </section>
 
-    <section class="card">
+    <section class="card" id="cardOps">
       <h2><span class="num">05</span><span class="rname">운영 · 마감</span>
         <span class="hint">저장소 용량과 남은 호출 한도입니다.</span></h2>
       <div class="ops" id="ops"></div>
@@ -145,6 +150,7 @@
 const K_TOK = 'mp_admin_tok';
 let STORES = [];      // [{repo, cfg}]
 let LEDGER = null;    // owner/repo
+let VENDOR = false;   // true = 조회 전용 (기록 저장소가 토큰 범위 밖)
 let DATE = MENU.dateStr();
 let MEAL = 0;         // 0 = 전체
 let STORE = '';       // '' = 전체 (식당 탭 선택값)
@@ -156,7 +162,7 @@ const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&l
 /* ---------- 로그인 ---------- */
 async function discover(){
   const repos = await GH.myRepos();
-  STORES = []; LEDGER = null;
+  STORES = []; LEDGER = null; VENDOR = false;
   for (const r of repos) {
     const c = await GH.getJson(r.full_name, 'config.json').catch(()=>null);
     if (!c) continue;
@@ -165,6 +171,23 @@ async function discover(){
   }
   STORES.sort((a,b) => (a.cfg.no||99) - (b.cfg.no||99));
   if (!STORES.length) throw new Error('식당 저장소를 찾지 못했습니다. 키 범위를 확인하세요.');
+  /* 기록 저장소가 안 보이면 업체 조회용 키다. 한 업체가 식당 여러 곳을 맡으면
+     그 저장소들만 고른 Read-only 키를 주는데, 그 키로는 마감도 누적 기록도
+     건드릴 수 없고 건드려서도 안 된다. 쓰기를 실제로 막는 건 토큰 권한이고,
+     여기서는 쓸 수 없는 기능을 화면에서 치우기만 한다. */
+  VENDOR = !LEDGER;
+}
+
+/* 조회 전용일 때 숨기는 것
+   - 04 누적 현황: 기록 파일에 전 식당 수치가 같이 들어있어 업체에 보이면 안 된다
+   - 05 운영 · 마감: 마감(과거 사진 삭제)·히스토리 축소 버튼이 있는 카드
+   관리자 키인데 기록 저장소를 못 읽는 경우(키 만료·범위 실수)에도 같은 판정이 걸린다.
+   그래서 "마감 버튼이 왜 없지?"로 끝나지 않게 01 에 사유를 띄운다. */
+function applyMode(){
+  document.getElementById('cardLedger').hidden = VENDOR;
+  document.getElementById('cardOps').hidden = VENDOR;
+  document.getElementById('modePill').hidden = !VENDOR;
+  document.getElementById('modeNote').hidden = !VENDOR;
 }
 
 async function start(token){
@@ -174,6 +197,7 @@ async function start(token){
   document.getElementById('setupCard').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('date').value = DATE;
+  applyMode();
   renderMealTabs();
   await load();
 }
@@ -283,8 +307,9 @@ async function load(){
     DATA[st.cfg.store] = { slots, have, err };
   }));
 
-  renderKpis(); renderStoreTabs(); renderCompare(); renderMissing(); renderOps();
-  loadLedger();
+  renderKpis(); renderStoreTabs(); renderCompare(); renderMissing();
+  /* 조회 전용 키로는 둘 다 쓸 수 없다. renderOps 는 식당 수만큼 GET /repos 를 날린다 */
+  if (!VENDOR) { renderOps(); loadLedger(); }
 }
 
 function totals(){
