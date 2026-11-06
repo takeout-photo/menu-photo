@@ -86,7 +86,15 @@
     return list.filter(function (it) {
       return isTakeOut(it) && isHandmade(it);
     }).map(function (it) {
-      var f = it.fileUpload || null;
+      /* fileUpload 는 배열이다(2026-11-06 중식 49건 전부 길이 1).
+         객체처럼 다루면 savePath 가 undefined 라 전부 '앱 사진 없음' 으로 보인다.
+         단일 객체로 오는 응답도 받아준다.
+         항목 안의 thumbnail/url 은 사내 전용 호스트에 http 라 쓰지 않는다 —
+         LTE 에서 닿지 않고 https 페이지에서는 혼합 콘텐츠로 차단된다.
+         공개 origin 에 savePath/thumbPath 를 붙여 쓴다 */
+      var fu = it.fileUpload;
+      var arr = Array.isArray(fu) ? fu : (fu ? [fu] : []);
+      var f = arr.filter(function (x) { return x && x.savePath; })[0] || null;
       var full = f && f.savePath ? cfg.origin + f.savePath : null;
       var thumb = f && f.thumbPath ? cfg.origin + f.thumbPath : full;
       return {
