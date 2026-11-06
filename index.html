@@ -10,11 +10,24 @@
 <link rel="stylesheet" href="assets/theme.css">
 <link rel="stylesheet" href="assets/photo.css">
 <style>
-  .store-sec{margin-bottom:18px}
-  .store-sec .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
-  .store-sec .head .nm{font:700 16px var(--font-display);letter-spacing:-.02em}
-  .store-sec .head .num{font:700 11px/1 var(--font-display);letter-spacing:.06em;color:#fff;
-    padding:5px 9px;border-radius:99px;background:linear-gradient(120deg,var(--brand),var(--brand2))}
+  /* 02 카드 안의 식당 블록. 번호 배지를 섹션 배지(01~05 의 그라데이션 알약)와
+     모양·색 둘 다 다르게 둔다 — 똑같으면 식당 번호가 섹션 번호로 읽힌다.
+     왼쪽 세로선과 들여쓰기로 '02 사진 비교의 하위' 라는 걸 눈에 보이게 했다 */
+  .store-sec{margin:0 0 20px;padding-left:14px;border-left:3px solid #e4e7f7}
+  .store-sec:last-child{margin-bottom:2px}
+  .store-sec .head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 11px}
+  .store-sec .head .nm{font:700 15px var(--font-display);letter-spacing:-.02em;color:var(--ink)}
+  .store-sec .head .num{font:700 10.5px/1 var(--font-display);letter-spacing:.04em;color:var(--sub);
+    padding:4px 7px;border-radius:7px;background:#eef0fb;border:1px solid #e0e3f4}
+  /* 끼니 탭(상위) 아래 붙는 식당 탭(하위). 켜진 탭도 그라데이션 대신 연한 면으로 둬서
+     어느 쪽이 상위 선택인지 보이게 한다 */
+  .tabs.sub{margin-top:9px}
+  .tabs.sub button{padding:7px 13px;font-size:12.5px}
+  .tabs.sub button.on{background:#eceaff;color:var(--brand);border-color:#cdc7ff}
+  .tabs.sub button.on:hover{color:var(--brand);background:#e6e3ff}
+  .tabs.sub button b{margin-left:5px;font-size:11.5px;opacity:.6}
+  /* 02 제목·탭과 식당 목록 사이를 띄운다 */
+  #compare{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
   .ops{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
   .ops .kpi .v{font-size:19px}
   .date-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
@@ -68,6 +81,7 @@
       <h2><span class="num">02</span><span class="rname">사진 비교</span>
         <span class="hint">왼쪽이 앱 등록 사진, 오른쪽이 식당이 올린 실물 사진입니다.</span></h2>
       <div class="tabs" id="mealTabs"></div>
+      <div class="tabs sub" id="storeTabs"></div>
       <div id="compare"></div>
     </section>
 
@@ -133,6 +147,7 @@ let STORES = [];      // [{repo, cfg}]
 let LEDGER = null;    // owner/repo
 let DATE = MENU.dateStr();
 let MEAL = 0;         // 0 = 전체
+let STORE = '';       // '' = 전체 (식당 탭 선택값)
 let DATA = {};        // store -> {slots:[], have:{slotId:{path,sha,time}}}
 let OBS = null;
 
@@ -198,7 +213,33 @@ function renderMealTabs(){
   document.getElementById('mealTabs').innerHTML = tabs.map(m =>
     `<button data-m="${m.cd}" class="${m.cd===MEAL?'on':''}">${m.icon} ${m.label}</button>`).join('');
   document.getElementById('mealTabs').querySelectorAll('button').forEach(b => {
-    b.onclick = () => { MEAL = Number(b.dataset.m); renderMealTabs(); renderCompare(); };
+    b.onclick = () => { MEAL = Number(b.dataset.m); renderMealTabs(); renderStoreTabs(); renderCompare(); };
+  });
+}
+
+/* 식당이 세로로 쌓여 있어 특정 식당을 보려면 한참 스크롤해야 했다.
+   끼니를 먼저 고르고(상위 탭) 그 안에서 식당을 고른다(하위 탭). */
+function renderStoreTabs(){
+  const host = document.getElementById('storeTabs');
+  const rows = [];
+  STORES.forEach(st => {
+    const d = DATA[st.cfg.store]; if (!d) return;
+    const list = MEAL ? d.slots.filter(s=>s.meal===MEAL) : d.slots;
+    if (!list.length && !d.err) return;
+    rows.push({ st, d, total: list.length, done: list.filter(s=>d.have[s.slotId]).length });
+  });
+  if (!rows.length) { host.innerHTML = ''; STORE = ''; return; }
+  /* 고른 식당이 이 끼니에 없으면 조용히 전체로 되돌린다 — 빈 화면이 되지 않게 */
+  if (STORE && !rows.some(r => r.st.cfg.store === STORE)) STORE = '';
+  host.innerHTML = ['<button data-s="" class="' + (STORE ? '' : 'on') + '">전체'
+      + '<b>' + num(rows.length) + '곳</b></button>']
+    .concat(rows.map(r =>
+      '<button data-s="' + esc(r.st.cfg.store) + '" class="' + (STORE===r.st.cfg.store?'on':'') + '">'
+      + esc(r.st.cfg.name || r.st.cfg.store)
+      + '<b>' + (r.d.err ? '?' : num(r.done) + '/' + num(r.total)) + '</b></button>')).join('');
+  host.querySelectorAll('button').forEach(b => {
+    b.onclick = () => { STORE = b.dataset.s; renderStoreTabs(); renderCompare();
+      document.getElementById('compare').scrollIntoView({block:'nearest'}); };
   });
 }
 
@@ -242,7 +283,7 @@ async function load(){
     DATA[st.cfg.store] = { slots, have, err };
   }));
 
-  renderKpis(); renderCompare(); renderMissing(); renderOps();
+  renderKpis(); renderStoreTabs(); renderCompare(); renderMissing(); renderOps();
   loadLedger();
 }
 
@@ -295,6 +336,7 @@ function renderCompare(){
   let html = '';
   STORES.forEach((st, i) => {
     const d = DATA[st.cfg.store]; if (!d) return;
+    if (STORE && st.cfg.store !== STORE) return;   // 식당 탭 선택값
     const list = MEAL ? d.slots.filter(s=>s.meal===MEAL) : d.slots;
     if (!list.length) return;
     const done = list.filter(s=>d.have[s.slotId]).length;
