@@ -86,6 +86,16 @@
   font-weight:700;background:rgba(18,22,43,.72);color:#fff;backdrop-filter:blur(4px)}
 .ph .busy{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.76);
   font-size:11.5px;font-weight:700;color:var(--brand)}
+/* 사진 위에 띄우는 작은 조작 버튼 — × 지우기, ↻ 다시 올리기.
+   .ph 가 position:relative 라 그 안에 절대배치한다. 왼쪽 위는 .tag 자리라 오른쪽에 둔다.
+   사진을 누르면 파일 선택이 열리는 자리라, 호출부에서 stopPropagation 을 반드시 걸 것 */
+.ph .acts{position:absolute;right:5px;top:5px;display:flex;gap:4px;z-index:2}
+.ph .acts button{width:29px;height:29px;padding:0;border-radius:9px;
+  border:1px solid rgba(255,255,255,.45);background:rgba(17,20,40,.6);color:#fff;
+  font:700 15px/1 var(--font-body);display:grid;place-items:center;cursor:pointer;
+  backdrop-filter:blur(3px);transition:.15s}
+.ph .acts button:hover{background:var(--crit);color:#fff;border-color:transparent}
+.ph .acts button.swap:hover{background:var(--brand)}
 
 .slot-act{display:flex;gap:6px}
 .slot-act button{flex:1;padding:8px 10px;font-size:12.5px;border-radius:12px}

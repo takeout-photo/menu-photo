@@ -65,7 +65,9 @@
 
     <section class="card">
       <h2><span class="num">02</span><span class="rname" id="mealTitle">촬영 · 업로드</span>
-        <span class="hint">사진을 고르면 바로 올라갑니다. 다시 찍으면 덮어씁니다.</span></h2>
+        <span class="hint"><span class="nw">사진을 고르면 바로 올라갑니다.</span>
+          <span class="nw">다시 찍으면 덮어쓰고,</span>
+          <span class="nw">사진 위 × 를 누르면 지워집니다.</span></span></h2>
       <div class="slots" id="slots"></div>
       <p class="empty-note" id="slotsNote" hidden></p>
     </section>
@@ -74,12 +76,12 @@
 
 <script src="js/chart-kit.js"></script>
 <script src="js/github-api.js"></script>
+<script src="js/photo-io.js"></script>
 <script src="js/menu-api.js"></script>
 <script>
 'use strict';
 
 const K_TOK = 'mp_tok', K_REPO = 'mp_repo';
-const MAX_EDGE = 1280, JPEG_Q = 0.8;
 
 let CFG = null;        // config.json
 let REPO = null;       // owner/repo
@@ -93,38 +95,6 @@ let OBS = null;        // 사진 지연 로딩
 
 /* ---------- 유틸 ---------- */
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function hhmmNow(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
-
-/* EXIF 회전을 반영해 비트맵을 얻는다. createImageBitmap 미지원 브라우저는 <img> 로 우회 */
-async function loadBitmap(file){
-  if (window.createImageBitmap) {
-    try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); }
-    catch (e) {
-      try { return await createImageBitmap(file); } catch (e2) { /* 아래로 */ }
-    }
-  }
-  return new Promise((res, rej) => {
-    const u = URL.createObjectURL(file), im = new Image();
-    im.onload = () => { res(im); setTimeout(()=>URL.revokeObjectURL(u), 0); };
-    im.onerror = () => { URL.revokeObjectURL(u); rej(new Error('이미지를 읽지 못했습니다')); };
-    im.src = u;
-  });
-}
-
-/* 긴 변 1280px, JPEG 0.8 → 약 150KB. 업체 사진은 same-origin 이라 canvas 제약이 없다 */
-async function shrink(file){
-  const src = await loadBitmap(file);
-  const w0 = src.width || src.naturalWidth, h0 = src.height || src.naturalHeight;
-  if (!w0 || !h0) throw new Error('이미지 크기를 알 수 없습니다');
-  const k = Math.min(1, MAX_EDGE / Math.max(w0, h0));
-  const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
-  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-  cv.getContext('2d', { alpha: false }).drawImage(src, 0, 0, w, h);
-  if (src.close) src.close();
-  const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', JPEG_Q));
-  if (!blob) throw new Error('이미지 변환에 실패했습니다');
-  return blob;
-}
 
 /* ---------- 로그인 ---------- */
 async function resolveRepo(){
@@ -257,6 +227,8 @@ function slotHtml(s){
     : `<div class="ph na">앱 사진 없음</div>`;
   const real = have
     ? `<img data-url="${esc(s.slotId)}" alt="" loading="lazy">`
+      + `<div class="acts"><button type="button" data-del="${esc(s.slotId)}"
+          title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button></div>`
     : `<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>촬영하기</span></div>`;
   return `<div class="slot ${have?'done':''}" data-slot="${esc(s.slotId)}">
     <div class="slot-hd">
@@ -291,6 +263,11 @@ function renderSlots(){
 
   host.querySelectorAll('[data-pick]').forEach(el => {
     el.onclick = () => host.querySelector('[data-file="' + CSS.escape(el.dataset.pick) + '"]').click();
+  });
+  /* X 는 사진(.ph) 안에 있고 .ph 는 누르면 카메라가 열리는 자리다.
+     전파를 막지 않으면 지우기를 누를 때 카메라까지 같이 뜬다 */
+  host.querySelectorAll('[data-del]').forEach(el => {
+    el.onclick = ev => { ev.stopPropagation(); removePhoto(el.dataset.del); };
   });
   host.querySelectorAll('[data-file]').forEach(inp => {
     inp.onchange = () => { if (inp.files && inp.files[0]) upload(inp.dataset.file, inp.files[0]); inp.value = ''; };
@@ -339,12 +316,12 @@ async function upload(slotId, file){
   const slot = (SLOTS[MEAL] || []).find(s => s.slotId === slotId);
   busy(slotId, '준비 중…');
   let blob;
-  try { blob = await shrink(file); }
+  try { blob = await PHOTO.shrink(file); }
   catch (e) { busy(slotId, null); alert('사진을 처리하지 못했습니다: ' + e.message); return; }
 
   busy(slotId, '올리는 중…');
-  const path = 'photos/' + TODAY + '/' + slotId + '.jpg';
-  const msg = slotId + ' ' + hhmmNow() + ' | ' + (slot ? slot.name : '');
+  const path = PHOTO.photoPath(TODAY, slotId);
+  const msg = PHOTO.uploadMsg(slotId, slot ? slot.name : '');
   try {
     const r = await GH.putFile(REPO, path, blob, msg);
     if (HAVE[slotId] && HAVE[slotId].url) URL.revokeObjectURL(HAVE[slotId].url);
@@ -357,9 +334,14 @@ async function upload(slotId, file){
       card.querySelector('.st').innerHTML = '<span class="pill ok">완료</span>';
       const box = card.querySelector('.pane.real .ph');
       box.classList.remove('empty');
-      box.innerHTML = '<img data-url="' + slotId + '" src="' + HAVE[slotId].url + '" alt="">';
+      box.innerHTML = '<img data-url="' + slotId + '" src="' + HAVE[slotId].url + '" alt="">'
+        + '<div class="acts"><button type="button" data-del="' + slotId
+        + '" title="이 사진 지우기" aria-label="이 사진 지우기">×</button></div>';
       box.setAttribute('data-pick', slotId);
       box.onclick = () => card.querySelector('[data-file]').click();
+      /* 방금 만든 X 는 renderSlots 의 일괄 바인딩을 못 받는다 — 여기서 직접 건다 */
+      const del = box.querySelector('[data-del]');
+      if (del) del.onclick = ev => { ev.stopPropagation(); removePhoto(slotId); };
       const btn = card.querySelector('.slot-act button');
       btn.textContent = '다시 촬영'; btn.classList.remove('primary');
     }
@@ -368,13 +350,29 @@ async function upload(slotId, file){
     busy(slotId, null);
     /* 회사 망에서는 프록시가 올리는 요청을 막는다. 차단 응답에는 CORS 헤더가 없어
        상태코드도 본문도 못 읽고 fetch 가 그냥 실패한다 → network 플래그로만 구분된다 */
-    alert(e.network
-      ? '사진을 올리지 못했습니다.\n\n회사 WiFi 에 연결돼 있으면 올라가지 않습니다.\n'
-        + '폰의 WiFi 를 끄고 모바일 데이터(LTE)로 바꾼 뒤 다시 눌러 주세요.\n'
-        + '지금까지 올라간 사진은 그대로 남아 있습니다.'
-      : e.status === 401
-      ? '업로드 키가 만료된 것 같습니다. 담당자에게 새 키를 받아주세요.'
-      : '업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.\n(' + e.message + ')');
+    alert(PHOTO.uploadErrText(e));
+  }
+}
+
+/* 올린 사진 1장 지우기.
+   잘못 찍은 건 '다시 촬영'(덮어쓰기)으로 해결되지만, 그 메뉴가 그날 안 나가게 되면
+   올라간 사진을 비워야 관리자 화면의 업로드 현황이 사실과 맞는다.
+   주의: git 은 지운 뒤에도 객체를 한동안 들고 있다 — 확실한 폐기는 저장소 재생성뿐(계획서 §3①) */
+async function removePhoto(slotId){
+  const have = HAVE[slotId];
+  if (!have) return;
+  const slot = (SLOTS[MEAL] || []).find(s => s.slotId === slotId);
+  if (!confirm('올린 사진을 지웁니다.\n\n'
+      + (slot ? slot.name : slotId) + '\n\n지우면 다시 "대기" 가 됩니다. 계속할까요?')) return;
+  busy(slotId, '지우는 중…');
+  try {
+    await GH.deleteFile(REPO, have.path, have.sha, PHOTO.deleteMsg(slotId, slot ? slot.name : ''));
+    if (have.url) URL.revokeObjectURL(have.url);
+    delete HAVE[slotId];
+    renderSlots();   // 카드 하나를 손으로 되돌리기보다 다시 그리는 쪽이 안전하다
+  } catch (e) {
+    busy(slotId, null);
+    alert(PHOTO.deleteErrText(e));
   }
 }
 

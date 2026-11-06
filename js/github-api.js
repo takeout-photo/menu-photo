@@ -281,6 +281,42 @@
     return putFile(full, path, blob, message);
   }
 
+  /* 파일 1개 삭제. DELETE /contents 는 sha 를 요구하고 커밋을 1개 만든다.
+     여러 건을 한 번에 지울 때는 반드시 batchCommit 을 쓸 것 — 141건을 141콜로 지우면
+     시간당 content-creating 한도(500, 전 계정 공유)를 먹는다(계획서 §2-1②).
+     sha 를 모르거나 그 사이 다른 기기가 덮어썼으면(409/422) 다시 받아 한 번 더 건다.
+     이미 없는 파일(404)은 지울 것이 없으므로 성공으로 본다 — 두 기기에서 같은 사진을
+     동시에 지우는 경우가 실제로 생긴다.
+     참고: 본문이 100바이트 남짓이라 사내 프록시의 50KB 한도에 걸리지 않는다 →
+     업로드와 달리 회사 망에서도 삭제는 된다 */
+  function deleteFile(full, path, sha, message) {
+    return serial(function () {
+      return withRetry(async function () {
+        var cur = sha;
+        if (!cur) {
+          var st = await statFile(full, path);
+          if (!st || !st.sha) return null;
+          cur = st.sha;
+        }
+        var url = '/repos/' + full + '/contents/' + encPath(path);
+        var body = { message: message || ('delete ' + path), sha: cur };
+        var res = await raw(url, { method: 'DELETE', body: body });
+        if (res.status === 409 || res.status === 422) {
+          var again = await statFile(full, path);
+          if (!again || !again.sha) return null;
+          body.sha = again.sha;
+          res = await raw(url, { method: 'DELETE', body: body });
+        }
+        if (res.status === 404) return null;
+        if (!res.ok) {
+          var payload = null; try { payload = await res.json(); } catch (e) { }
+          throw HttpError(res.status, payload, res);
+        }
+        return res.json();
+      });
+    });
+  }
+
   /* ---------- Git Data 일괄 커밋 ----------
      삭제 141건을 DELETE 141콜로 하면 시간당 content-creating 한도(500)를 먹는다.
      base_tree 를 둔 트리에서 sha:null 인 항목은 삭제를 뜻한다 → 커밋 1개로 끝낸다. */
@@ -367,7 +403,7 @@
     me: me, myRepos: myRepos, repoInfo: repoInfo,
     statFile: statFile, getText: getText, getJson: getJson,
     getObjectUrl: getObjectUrl, listDir: listDir, tree: tree, commits: commits,
-    putFile: putFile, putJson: putJson,
+    putFile: putFile, putJson: putJson, deleteFile: deleteFile,
     batchCommit: batchCommit, collapseHistory: collapseHistory,
     _req: req, _raw: raw
   };

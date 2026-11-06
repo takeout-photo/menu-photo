@@ -84,7 +84,16 @@
 
     <section class="card">
       <h2><span class="num">02</span><span class="rname">사진 비교</span>
-        <span class="hint">왼쪽이 앱 등록 사진, 오른쪽이 식당이 올린 실물 사진입니다.</span></h2>
+        <span class="hint">왼쪽이 앱 등록 사진, 오른쪽이 올라온 실물 사진입니다.</span></h2>
+      <p class="lte-note" id="upNote" hidden>
+        <b><span class="nw">사진 올리기는 회사 망에서 막힙니다.</span></b>
+        <span class="nw">사내 프록시가 올리는 요청만 차단하므로,</span>
+        <span class="nw">폰을 모바일 데이터(LTE)로 바꾸거나</span>
+        <span class="nw">테더링으로 연결한 뒤 올려 주세요.</span>
+        <span class="nw">지우기는 회사 망에서도 됩니다.</span><br>
+        <span class="nw">빈 자리를 누르면 사진을 올리고,</span>
+        <span class="nw">사진 위 <b>&#8635;</b> 로 다시 올리고 <b>&times;</b> 로 지웁니다.</span>
+        <span class="nw">지운 사진은 되돌릴 수 없습니다.</span></p>
       <div class="tabs" id="mealTabs"></div>
       <div class="tabs sub" id="storeTabs"></div>
       <div id="compare"></div>
@@ -143,6 +152,7 @@
 
 <script src="js/chart-kit.js"></script>
 <script src="js/github-api.js"></script>
+<script src="js/photo-io.js"></script>
 <script src="js/menu-api.js"></script>
 <script>
 'use strict';
@@ -186,6 +196,7 @@ async function discover(){
 function applyMode(){
   document.getElementById('cardLedger').hidden = VENDOR;
   document.getElementById('cardOps').hidden = VENDOR;
+  document.getElementById('upNote').hidden = VENDOR;
   document.getElementById('modePill').hidden = !VENDOR;
   document.getElementById('modeNote').hidden = !VENDOR;
 }
@@ -285,7 +296,8 @@ async function load(){
     catch (e) { err = e.message; }
 
     const have = {};
-    entries.forEach(e => { if (e.type==='file') have[e.name.replace(/\.jpg$/i,'')] = { path:e.path, url:null, time:null }; });
+    /* sha 는 사진 1장 삭제에 필요하다 — DELETE /contents 가 sha 를 요구한다 */
+    entries.forEach(e => { if (e.type==='file') have[e.name.replace(/\.jpg$/i,'')] = { path:e.path, sha:e.sha, url:null, time:null }; });
 
     /* 커밋 메시지에서 업로드 시각을 복원한다.
        since/until 은 UTC 로 해석된다. DATE+'T00:00:00Z' 로 넘기면 KST 기준
@@ -307,9 +319,15 @@ async function load(){
     DATA[st.cfg.store] = { slots, have, err };
   }));
 
-  renderKpis(); renderStoreTabs(); renderCompare(); renderMissing();
+  repaint();
   /* 조회 전용 키로는 둘 다 쓸 수 없다. renderOps 는 식당 수만큼 GET /repos 를 날린다 */
   if (!VENDOR) { renderOps(); loadLedger(); }
+}
+
+/* 사진을 한 장 올리거나 지우면 KPI·식당 탭·카드·미업로드 목록이 한꺼번에 어긋난다.
+   load() 를 다시 돌리면 189번 fetch 가 또 나가므로 화면만 다시 그린다 */
+function repaint(){
+  renderKpis(); renderStoreTabs(); renderCompare(); renderMissing();
 }
 
 function totals(){
@@ -336,12 +354,29 @@ function renderKpis(){
 /* ---------- 비교 ---------- */
 function cardHtml(st, s){
   const d = DATA[st.cfg.store], have = d.have[s.slotId];
+  const key = esc(st.cfg.store) + '|' + esc(s.slotId);
   const app = s.appThumb
     ? `<img src="${esc(s.appThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
     : `<div class="ph na">앱 사진 없음</div>`;
+  /* 조회 전용 키(업체 관리자)는 토큰이 Contents: Read-only 라 올리기·지우기가 403 이다.
+     눌러봐야 실패할 버튼을 보여줄 이유가 없어 화면에서도 치운다.
+     쓰기를 실제로 막는 건 어디까지나 토큰 권한이고 이건 표시일 뿐이다 */
+  const canEdit = !VENDOR;
+  const acts = (have && canEdit)
+    ? `<div class="acts">`
+      + `<button type="button" class="swap" data-pick="${key}" title="사진 다시 올리기" aria-label="사진 다시 올리기">&#8635;</button>`
+      + `<button type="button" data-del="${key}" title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button>`
+      + `</div>`
+    : '';
   const real = have
-    ? `<img data-lazy="${esc(st.cfg.store)}|${esc(s.slotId)}" alt="">`
-    : `<div class="ph na">미업로드</div>`;
+    ? `<img data-lazy="${key}" alt="">` + acts
+    : canEdit
+      ? `<div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>사진 올리기</span></div>`
+      : `<div class="ph na">미업로드</div>`;
+  /* 빈 자리는 눌러서 올리는 자리라 .empty 를 달고 data-pick 을 건다.
+     사진이 있는 칸의 data-pick 은 ↻ 버튼에만 있다 */
+  const phCls = (!have && canEdit) ? 'ph empty' : 'ph';
+  const phPick = (!have && canEdit) ? ` data-pick="${key}"` : '';
   return `<div class="slot ${have?'done':''}">
     <div class="slot-hd">
       <div class="nm">${esc(s.name)}</div>
@@ -350,8 +385,9 @@ function cardHtml(st, s){
     <div class="slot-sub">${MENU.mealLabel(s.meal)} · ${esc(s.corner)}</div>
     <div class="panes">
       <div class="pane"><div class="cap">앱 등록</div><div class="ph">${app}</div></div>
-      <div class="pane real"><div class="cap">실물</div><div class="ph">${real}</div></div>
+      <div class="pane real"><div class="cap">실물</div><div class="${phCls}"${phPick}>${real}</div></div>
     </div>
+    ${canEdit ? `<input type="file" accept="image/*" data-file="${key}">` : ''}
   </div>`;
 }
 
@@ -381,6 +417,20 @@ function renderCompare(){
   });
   host.innerHTML = html || '<p class="empty-note">이 날짜에 해당하는 수제 Take-out 메뉴가 없습니다.</p>';
 
+  /* 올리기(빈 자리 · ↻)와 지우기(×). ↻·× 는 사진 위에 떠 있고 그 아래도 클릭 자리라
+     전파를 막지 않으면 한 번 눌러 두 가지가 같이 일어난다 */
+  host.querySelectorAll('[data-pick]').forEach(el => {
+    el.onclick = ev => { ev.stopPropagation();
+      const inp = host.querySelector('[data-file="' + CSS.escape(el.dataset.pick) + '"]');
+      if (inp) inp.click(); };
+  });
+  host.querySelectorAll('[data-del]').forEach(el => {
+    el.onclick = ev => { ev.stopPropagation(); removePhoto(el.dataset.del); };
+  });
+  host.querySelectorAll('[data-file]').forEach(inp => {
+    inp.onchange = () => { if (inp.files && inp.files[0]) uploadPhoto(inp.dataset.file, inp.files[0]); inp.value = ''; };
+  });
+
   /* 사진은 보일 때만 받는다 — 하루 최대 141장이라 한 번에 받으면 느리다 */
   OBS = new IntersectionObserver(es => {
     es.forEach(en => { if (!en.isIntersecting) return;
@@ -397,6 +447,87 @@ async function lazyLoad(img){
     if(!have.url) have.url = await GH.getObjectUrl(st.repo, have.path);
     if(have.url) img.src = have.url;
   }catch(e){ /* 개별 실패는 무시 */ }
+}
+
+/* ---------- 사진 올리기 · 지우기 (관리자) ----------
+   관리자 토큰은 식당 저장소 전부에 쓰기 권한이 있어 식당을 가리지 않는다.
+   업체가 못 올린 건을 대신 채우거나, 잘못 올라온 사진을 비울 때 쓴다.
+   카드 키는 "식당코드|슬롯ID" 한 덩어리다 — 식당마다 저장소가 달라서 둘 다 필요하다 */
+function splitKey(key){
+  const i = key.indexOf('|');
+  const store = key.slice(0, i), slotId = key.slice(i + 1);
+  const st = STORES.find(x => x.cfg.store === store);
+  const d = DATA[store];
+  const slot = d && d.slots.find(x => x.slotId === slotId);
+  return { store, slotId, st, d, slot };
+}
+
+/* 진행 표시를 사진 칸 위에 덮는다.
+   ↻ 버튼에도 data-pick 이 달려 있어서 .ph 로 한정하지 않으면 버튼 안에 덮어쓴다 */
+function busyPhoto(key, text){
+  const sel = CSS.escape(key);
+  const img = document.querySelector('img[data-lazy="' + sel + '"]');
+  const box = img ? img.parentNode : document.querySelector('.ph[data-pick="' + sel + '"]');
+  if (!box) return;
+  let b = box.querySelector('.busy');
+  if (text === null) { if (b) b.remove(); return; }
+  if (!b) { b = document.createElement('div'); b.className = 'busy'; box.appendChild(b); }
+  b.textContent = text;
+}
+
+async function uploadPhoto(key, file){
+  const { slotId, st, d, slot } = splitKey(key);
+  if (!st || !d) return;
+  /* 지난 날짜에 사진을 끼워 넣으면 그날 기록이 사후에 바뀐다. 게다가 마감 때 어제분으로
+     지워져 흔적만 남는다. 올리기는 오늘만 허용한다(지우기는 날짜를 가리지 않는다) */
+  if (DATE !== MENU.dateStr()) {
+    alert('사진은 오늘 날짜에만 올릴 수 있습니다.\n날짜를 오늘로 바꾼 뒤 다시 눌러 주세요.');
+    return;
+  }
+  busyPhoto(key, '준비 중…');
+  let blob;
+  try { blob = await PHOTO.shrink(file); }
+  catch (e) { busyPhoto(key, null); alert('사진을 처리하지 못했습니다: ' + e.message); return; }
+
+  busyPhoto(key, '올리는 중…');
+  const path = PHOTO.photoPath(DATE, slotId);
+  try {
+    /* 커밋 메시지에 '관리자' 를 남긴다 — 커밋 author 는 전용 계정 하나라
+       업체가 올린 것과 구분할 단서가 메시지밖에 없다 */
+    const r = await GH.putFile(st.repo, path, blob,
+      PHOTO.uploadMsg(slotId, slot ? slot.name : '', '관리자'));
+    const prev = d.have[slotId];
+    if (prev && prev.url) URL.revokeObjectURL(prev.url);
+    d.have[slotId] = { path: path, sha: r && r.content && r.content.sha,
+      url: URL.createObjectURL(blob), time: PHOTO.hhmmNow() };
+    repaint();
+  } catch (e) {
+    busyPhoto(key, null);
+    alert(PHOTO.uploadErrText(e, { admin: true }));
+  }
+}
+
+/* 사진 1장 지우기. 마감의 일괄 삭제와 달리 날짜·식당을 가리지 않는다.
+   주의: git 은 지운 뒤에도 객체를 한동안 들고 있어 커밋 SHA 를 아는 사람은 꺼낼 수 있다.
+   확실한 폐기는 분기 저장소 재생성뿐이다(계획서 §3①) */
+async function removePhoto(key){
+  const { slotId, st, d, slot } = splitKey(key);
+  if (!st || !d || !d.have[slotId]) return;
+  const have = d.have[slotId];
+  if (!confirm('올린 사진을 지웁니다.\n\n'
+      + (st.cfg.name || st.cfg.store) + ' · ' + (slot ? slot.name : slotId) + '\n'
+      + DATE + '\n\n지우면 "미업로드" 로 돌아갑니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+  busyPhoto(key, '지우는 중…');
+  try {
+    await GH.deleteFile(st.repo, have.path, have.sha,
+      PHOTO.deleteMsg(slotId, slot ? slot.name : '', '관리자'));
+    if (have.url) URL.revokeObjectURL(have.url);
+    delete d.have[slotId];
+    repaint();
+  } catch (e) {
+    busyPhoto(key, null);
+    alert(PHOTO.deleteErrText(e));
+  }
 }
 
 function renderMissing(){

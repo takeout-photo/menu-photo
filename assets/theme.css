@@ -11,6 +11,10 @@
   --shadow:0 1px 2px rgba(18,22,43,.04),0 14px 34px -14px rgba(52,52,150,.16);
 }
 *{box-sizing:border-box}
+/* hidden 속성이 실제로 먹게 한다. .pill 처럼 display 를 직접 정한 클래스가 있으면
+   UA 스타일시트의 [hidden]{display:none} 이 특이도에서 밀려 요소가 그대로 보인다
+   (관리자 키인데 "조회 전용" 배지가 떠 있던 원인) */
+[hidden]{display:none!important}
 html{-webkit-font-smoothing:antialiased}
 body{margin:0;color:var(--ink);font:15px/1.6 var(--font-body);letter-spacing:-.011em;
   background:radial-gradient(900px 420px at 88% -80px,rgba(155,92,246,.10),transparent 70%),radial-gradient(700px 380px at -5% 120px,rgba(91,91,240,.07),transparent 70%),var(--bg);background-repeat:no-repeat;min-height:100vh}
