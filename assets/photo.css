@@ -166,13 +166,17 @@
 /* ---------- 인쇄 리포트 ----------
    앱 사진은 CORS 헤더가 없어 canvas 로 못 굽는다. 브라우저 인쇄 엔진은
    cross-origin <img> 를 정상 렌더하므로 PDF 는 인쇄로만 만든다(계획서 §5-3).
-   하루 141건 × 2장이라 장수가 금방 불어난다. 기록 보관용이라 사진을 작게 두고
-   한 장에 최대한 많이 담는다 — 5열 × (앱|실물) = 한 줄에 10장, A4 한 장에 40건 안팎. */
+   하루 141건 × 2장이라 장수가 금방 불어난다. 3열 × (앱|실물) = 한 줄에 6장,
+   사진 30mm — 음식이 같은지 눈으로 볼 수 있는 선에서 가장 조밀하게. */
 #printArea{display:none}
 @media print{
   @page{size:A4;margin:9mm}
   body{background:#fff!important}
-  .hero,.topbar,.tabs,.no-print,main>.card{display:none!important}
+  /* main>.card 는 #setupCard 밖에 못 잡는다 — 나머지 카드는 #app 안에 있어
+     화면 그대로(사진 비교 카드의 큰 정사각 사진까지) 인쇄돼 한 장에 메뉴 1~2개만 찍혔다.
+     리포트만 남기고 main 안을 통째로 숨긴다 */
+  .hero,.topbar,.tabs,.no-print{display:none!important}
+  main>*:not(#printArea){display:none!important}
   main{margin:0!important;padding:0!important;max-width:none!important}
   #printArea{display:block!important}
   .rp-hd{border-bottom:2px solid #12162b;padding-bottom:5px;margin-bottom:9px}
@@ -181,21 +185,21 @@
   /* 섹션에 break-inside:avoid 를 걸면 한 섹션(최대 26건)이 한 페이지보다 클 때
      앞 페이지를 통째로 비우고 넘어간다 — 빈 페이지가 생기는 주범이라 쓰지 않는다 */
   .rp-sec{margin-bottom:8px}
-  .rp-sec h2{font:700 10.5px var(--font-display);margin:0 0 4px;padding:3px 7px;
+  .rp-sec h2{font:700 11px var(--font-display);margin:0 0 4px;padding:3px 7px;
     background:#f1f2fa;border-radius:5px;border-left:3px solid #5b5bf0;break-after:avoid}
-  .rp-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+  .rp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
   .rp-card{break-inside:avoid;page-break-inside:avoid;
     border:1px solid #d8dae8;border-radius:5px;padding:4px}
-  .rp-card .nm{font-size:7.5px;font-weight:700;line-height:1.3;margin-bottom:3px;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:20px}
+  .rp-card .nm{font-size:9px;font-weight:700;line-height:1.3;margin-bottom:3px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:24px}
   .rp-card .pair{display:grid;grid-template-columns:1fr 1fr;gap:3px}
   .rp-card .pair figure{margin:0}
   /* 높이를 mm 로 못박는다 — aspect-ratio 만 두면 인쇄 엔진이 이미지를 원본 크기로
      늘려 한 페이지에 한두 장만 들어가는 일이 생긴다 */
-  .rp-card .pair img{width:100%;height:15mm;object-fit:cover;border-radius:3px;
+  .rp-card .pair img{width:100%;height:30mm;object-fit:cover;border-radius:3px;
     display:block;border:1px solid #e3e5f0}
-  .rp-card .pair .none{width:100%;height:15mm;border:1px dashed #c3c7e4;border-radius:3px;
-    display:grid;place-items:center;font-size:7px;color:#8b90ad;text-align:center;line-height:1.25}
-  .rp-card .pair figcaption{font-size:6.5px;color:#666;margin-top:1px;text-align:center;
+  .rp-card .pair .none{width:100%;height:30mm;border:1px dashed #c3c7e4;border-radius:3px;
+    display:grid;place-items:center;font-size:8.5px;color:#8b90ad;text-align:center;line-height:1.3}
+  .rp-card .pair figcaption{font-size:7.5px;color:#666;margin-top:1px;text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }

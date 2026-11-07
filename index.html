@@ -37,7 +37,7 @@
   .danger{border-color:#ffd3da!important;color:#c21f38!important}
   .danger:hover{background:#fff0f2!important;border-color:var(--crit)!important;color:#c21f38!important}
   /* 날짜 줄 — 폰에서는 날짜가 폭을 다 먹고 그 옆에 새로고침(아이콘),
-     리포트 인쇄는 아래 한 줄을 통째로 쓴다 */
+     리포트 저장은 아래 한 줄을 통째로 쓴다 */
   .date-row label.f{flex:1 1 150px;min-width:0;max-width:260px}  /* 폰에서는 꽉 채우고 넓은 화면에서 과하게 늘어나지 않게 */
   .date-row input[type=date]{width:100%}
   @container (max-width:519.98px){.date-row #print{flex:1 1 100%}}
@@ -91,8 +91,13 @@
                stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M20.5 12a8.5 8.5 0 1 1-2.49-6.01"/><path d="M20.5 3.5v5h-5"/></svg>
         </button>
-        <button id="print" class="no-print">리포트 인쇄 (PDF 저장)</button>
+        <button id="print" class="no-print">리포트 저장(PDF)</button>
       </div>
+      <!-- 브라우저는 PDF 를 바로 만들어 주지 못한다. 인쇄 창의 "PDF로 저장" 이 그 자리다 -->
+      <p class="hint no-print" style="margin:-6px 0 14px">
+        <span class="nw">인쇄 창이 열리면 대상을</span>
+        <span class="nw"><b>PDF로 저장</b>을 고르세요.</span>
+        <span class="nw">한 번 고르면 다음부터 그대로 열립니다.</span></p>
       <div class="kpis" id="kpis"></div>
     </section>
 
@@ -258,6 +263,10 @@ document.getElementById('print').onclick = async () => {
   if (pend.length) { btn.textContent = '사진 ' + num(pend.length) + '장 준비 중…'; await Promise.all(pend); }
   buildReport();
   btn.textContent = was; btn.disabled = false;
+  /* 저장되는 PDF 의 기본 파일명은 document.title 이다 — "index" 로 저장되지 않게 바꿔 둔다 */
+  const title = document.title;
+  document.title = '수제 Take-out 사진비교 ' + DATE;
+  window.addEventListener('afterprint', () => { document.title = title; }, { once:true });
   window.print();
 };
 
