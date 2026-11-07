@@ -13,13 +13,15 @@
    손대지 않고 여기서 컨텍스트만 만들어 준다. */
 .card{container-type:inline-size}
 
-/* 업로드 화면은 폰(컨테이너 ~335px)이 주 타깃이다. 기본 .kpis 는 380px 부터
-   2열이라 KPI 4장이 세로로 444px 를 먹고, 업체가 메뉴 카드를 보기까지 한참 스크롤해야 한다.
-   이 화면에서만 2열 기준을 낮춘다 — 한 장 160px 라 글자는 잘리지 않는다. */
-/* 520px 상한이 없으면 이 규칙이 theme.css 의 4열 규칙보다 뒤에 와서 넓은 화면까지
-   2열로 묶어버린다. 폰 구간에서만 적용되도록 범위를 닫는다 */
-@container (min-width:300px) and (max-width:519.98px){
-  .kpis.tight{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* 폰에서는 KPI 를 2x2 로 둔다. 두 화면 모두 폰이 주 타깃인데 1열이면 KPI 4장이
+   세로로 440px 를 먹어, 업체는 메뉴 카드까지 관리자는 사진 비교까지 한참 스크롤해야 한다.
+   theme.css 의 2열 기준(380px)은 이 도구의 카드(폰에서 컨테이너 ~300px)에 안 맞는다.
+   520px 상한을 닫지 않으면 이 규칙이 theme.css 의 4열 규칙보다 뒤에 와서
+   넓은 화면까지 2열로 묶어버린다 */
+@container (max-width:519.98px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .kpi{padding:11px 10px 11px 12px}
+}
 
 /* ---------- 토큰 입력 ---------- */
 .setup{max-width:560px;margin:0 auto}
@@ -42,6 +44,26 @@
 .pill.warn{background:#fff1d6;color:#a86100}
 .pill.bad{background:#ffe5e9;color:#c21f38}
 
+/* 기호만 두는 정사각 버튼(새로고침). 글자가 없으니 title 과 aria-label 을 반드시 같이 준다.
+   누른 뒤 아무 변화가 없으면 또 누르게 되므로, 도는 동안 눈에 보이게 한다 */
+.iconbtn{flex:none;display:inline-grid;place-items:center;width:38px;height:38px;padding:0;border-radius:12px}
+.iconbtn svg{display:block}
+.iconbtn.busy{color:var(--brand);border-color:#cdc7ff}
+.iconbtn.busy svg{animation:spin .9s linear infinite}
+.iconbtn:disabled{cursor:default}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.iconbtn.busy svg{animation:none}}
+
+/* 글자 링크처럼 보이는 작은 버튼 — 로그아웃처럼 평소에 누를 일이 없는 것.
+   테두리 있는 알약 버튼(새로고침/인쇄 같은 상시 동작)과 한눈에 구분되게 둔다 */
+.linkbtn{border:0;background:none;padding:5px 7px;border-radius:9px;
+  font:600 12px var(--font-body);color:var(--sub);
+  text-decoration:underline;text-underline-offset:3px;text-decoration-color:#c9cde4}
+.linkbtn:hover{color:var(--crit);background:#fff0f2;border-color:transparent}
+/* 제목줄/상단바의 오른쪽 끝에 붙인다. 줄이 접혀도 그 줄의 오른쪽 끝으로 간다 —
+   폰에서 .topbar 가 두 줄이 되면 로그아웃만 둘째 줄 왼쪽에 덩그러니 남았다 */
+.card h2 .linkbtn,.topbar .linkbtn{margin-left:auto}
+
 /* 사내망 업로드 차단 안내. 읽기는 되고 올리는 것만 막혀서, 막히기 전에 알려줘야 한다 */
 .lte-note{margin:0 0 14px;padding:11px 14px;border-radius:12px;
   background:#fff8e8;border:1px solid #f0dfb8;border-left:5px solid #e0a53a;
@@ -53,6 +75,21 @@
 .tabs button{padding:9px 18px;font-weight:600}
 .tabs button.on{background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff;border-color:transparent}
 .tabs button.on:hover{color:#fff}
+/* '전체' 는 고르는 범위가 다른 버튼(필터 해제)이라 색을 달리한다 —
+   브랜드 그라데이션을 그대로 쓰면 "중식을 골랐다" 와 같아 보인다 */
+.tabs .all.on{background:var(--ink);color:#fff;border-color:transparent}
+.tabs .all.on:hover{background:var(--ink);color:#fff}
+
+/* 폰에서는 탭이 제멋대로 접혀 조식-중식-석식이 두 줄로 갈라졌다.
+   '전체' 는 한 줄을 통째로 쓰고(범위가 다르다는 표시도 된다) 끼니 3개를 같은 행에 균등 배치한다.
+   식당 탭(.sub)은 이름이 길어 2열. */
+@container (max-width:519.98px){
+  .tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .tabs button{padding:9px 6px;font-size:12.5px;text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tabs .all{grid-column:1/-1}
+  .tabs.sub{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 
 /* ---------- 사진 슬롯 ---------- */
 .slots{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}

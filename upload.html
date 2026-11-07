@@ -40,15 +40,16 @@
     <section class="card">
       <!-- 로그인하면 01(키 등록) 카드가 사라진다. 번호가 02 부터 시작하면
            업체 화면에 01 이 없는 꼴이 되므로 여기서 01 을 다시 연다 -->
-      <h2><span class="num">01</span><span class="rname">오늘 할 일</span></h2>
+      <!-- 로그아웃은 제목줄 오른쪽 끝에 둔다. 상단바에 두면 폰에서 줄이 접혀
+           링크 한 줄이 통째로 생긴다(관리자 화면도 같은 자리) -->
+      <h2><span class="num">01</span><span class="rname">오늘 할 일</span>
+        <button class="no-print linkbtn" id="logout">이 기기에서 로그아웃</button></h2>
       <div class="topbar">
         <span class="who" id="storeName">—</span>
         <span class="pill" id="datePill">—</span>
-        <span class="spacer"></span>
-        <button class="no-print" id="logout" style="padding:7px 14px;font-size:12.5px">이 기기에서 로그아웃</button>
       </div>
 
-      <div class="kpis tight" id="kpis"></div>
+      <div class="kpis" id="kpis"></div>
       <div class="prog"><i id="progBar"></i></div>
       <p class="hint" id="progText" style="margin:0 0 14px">—</p>
 
