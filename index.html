@@ -697,65 +697,120 @@ function buildReport(){
    매일 눌러야 하는 기록과, 가끔 하면 되는 삭제를 갈랐다(2026-11-09).
    순서는 그대로다 — 읽기 → 기록 → (삭제). 기록이 확인되기 전에는 절대 지우지 않는다. */
 
-/* ① 어제 이전 사진을 전부 훑어 날짜별 기록과 삭제 목록을 만든다.
+/* 한 번에 채울 최대 일수. 오래 안 눌렀다 눌러도 메뉴 API 를 한꺼번에 수백 번
+   때리지 않게 끊는다. 남은 기간은 다시 누르면 이어서 채운다 */
+const FILL_MAX = 14;
+
+/* 기록 저장소의 월 파일을 캐시해 읽는다 — 같은 달을 여러 번 받지 않게 */
+async function ledgerMonth(ym, cache){
+  if (!(ym in cache)) cache[ym] = await GH.getJson(LEDGER, ym+'.json').catch(()=>null) || {};
+  return cache[ym];
+}
+
+/* ① 어제까지를 날짜 × 식당으로 훑어 기록을 만든다.
+   사진 폴더를 기준으로 돌면 안 된다 — 한 장도 안 올린 식당은 그날 폴더가 아예 없어서
+   기록이 안 생기고, 그러면 04 누적 현황이 실제보다 좋게 나온다(0% 인 날이 그래프에서
+   사라지고, 식당별 누계도 올린 날만 평균 내게 된다). 그래서 날짜를 돌며 사진이 없으면
+   uploaded: 0 으로 남긴다.
    하나라도 못 읽으면 통째로 멈춘다. listDir 실패를 빈 배열로 삼키면 그 식당만
    조용히 빠진 채 "완료" 가 떠서, 기록도 없이 사진만 사라진 걸 아무도 모르게 된다. */
 async function scanPast(say){
-    const today = MENU.dateStr();
-    const byMonth = {};
-    const plan = [];   // [{st, who, del:[path]}]
+  const today = MENU.dateStr();
+  const yest = MENU.shiftDate(today, -1);
+  const cache = {};
 
+  /* 식당별로 사진이 있는 과거 날짜를 모은다(저장소당 1콜) */
+  const have = {};          // store -> Set(날짜)
+  let oldest = null;
+  for (const st of STORES) {
+    const who = st.cfg.name || st.cfg.store;
+    say(who + ' 확인 중…');
+    let dirs;
+    try { dirs = await GH.listDir(st.repo, 'photos'); }
+    catch (e) { throw new Error(who + ' 저장소를 읽지 못했습니다 (' + e.message + '). 아무것도 바꾸지 않았습니다.'); }
+    const set = new Set();
+    dirs.forEach(e => {
+      if (e.type==='dir' && /^\d{4}-\d{2}-\d{2}$/.test(e.name) && e.name < today) {
+        set.add(e.name);
+        if (!oldest || e.name < oldest) oldest = e.name;
+      }
+    });
+    have[st.cfg.store] = set;
+  }
+
+  /* 어디부터 볼지 — 마지막으로 기록한 날 다음 날부터.
+     기록이 아직 없으면 가장 오래된 사진 날짜부터, 그것도 없으면 어제 하루만 본다
+     (쓰기 시작하기 전 날짜까지 0% 로 채우면 없던 책임이 생긴다) */
+  let last = null;
+  for (const ym of [ymOf(today), ymOf(MENU.shiftDate(today, -31))]) {
+    const m = await ledgerMonth(ym, cache);
+    Object.keys(m).forEach(d => { if (d < today && (!last || d > last)) last = d; });
+  }
+  let start = last ? MENU.shiftDate(last, 1) : (oldest || yest);
+  if (start > yest) start = null;
+  let end = yest, capped = false;
+  if (start) {
+    const lim = MENU.shiftDate(start, FILL_MAX - 1);
+    if (lim < end) { end = lim; capped = true; }
+  }
+
+  const byMonth = {};
+  let days = 0;
+  for (let d = start; d && d <= end; d = MENU.shiftDate(d, 1)) {
+    say(d + ' 집계 중…');
+    let any = false;
     for (const st of STORES) {
       const who = st.cfg.name || st.cfg.store;
-      say(who + ' 확인 중…');
-      let dirs;
-      try { dirs = await GH.listDir(st.repo, 'photos'); }
-      catch (e) { throw new Error(who + ' 저장소를 읽지 못했습니다 (' + e.message + '). 아무것도 바꾸지 않았습니다.'); }
-
-      const past = dirs.filter(e => e.type==='dir' && /^\d{4}-\d{2}-\d{2}$/.test(e.name) && e.name < today);
-      const del = [];
-      for (const dir of past) {
+      let ids = [];
+      if (have[st.cfg.store].has(d)) {
         let files;
-        try { files = await GH.listDir(st.repo, 'photos/'+dir.name); }
-        catch (e) { throw new Error(who + ' ' + dir.name + ' 을 읽지 못했습니다 (' + e.message + '). 아무것도 바꾸지 않았습니다.'); }
-
-        const ids = files.filter(f=>f.type==='file').map(f=>f.name.replace(/\.jpg$/i,''));
-        files.forEach(f => { if (f.type==='file') del.push(f.path); });
-
-        /* 그날의 대상 건수를 메뉴 API 에서 다시 계산한다.
-           과거 메뉴가 API 에서 내려가면 0 이 나오는데, 그대로 기록하면
-           사진이 25장 올라온 날이 업로드율 0% 로 남는다. 올라온 장수 밑으로는 못 가게 막는다 */
-        let target = 0;
-        try {
-          const per = await Promise.all(MENU.MEALS.map(m => MENU.fetchSlots(st.cfg, dir.name, m.cd).catch(()=>[])));
-          target = per.reduce((a,b)=>a+b.length,0);
-        } catch (e) { target = 0; }
-        target = Math.max(target, ids.length);
-
-        const ym = ymOf(dir.name);
-        byMonth[ym] = byMonth[ym] || {};
-        byMonth[ym][dir.name] = byMonth[ym][dir.name] || {};
-        byMonth[ym][dir.name][st.cfg.store] = {
-          name: who, target: target, uploaded: ids.length, slots: ids
-        };
+        try { files = await GH.listDir(st.repo, 'photos/'+d); }
+        catch (e) { throw new Error(who + ' ' + d + ' 을 읽지 못했습니다 (' + e.message + '). 아무것도 바꾸지 않았습니다.'); }
+        ids = files.filter(f=>f.type==='file').map(f=>f.name.replace(/\.jpg$/i,''));
       }
-      if (del.length) plan.push({ st: st, who: who, del: del });
-    }
+      /* 그날의 대상 건수를 메뉴 API 에서 가져온다.
+         과거 메뉴가 API 에서 내려가면 0 이 나오는데, 그대로 기록하면 사진이 25장
+         올라온 날이 업로드율 0% 로 남는다. 올라온 장수 밑으로는 못 가게 막는다 */
+      let target = 0;
+      try {
+        const per = await Promise.all(MENU.MEALS.map(m => MENU.fetchSlots(st.cfg, d, m.cd).catch(()=>[])));
+        target = per.reduce((a,b)=>a+b.length,0);
+      } catch (e) { target = 0; }
+      target = Math.max(target, ids.length);
+      /* 대상도 사진도 없으면 그날 그 식당은 배식이 없었다 — 기록하지 않는다.
+         0/0 을 남기면 주말·공휴일이 업로드율 0% 로 그래프에 찍힌다 */
+      if (!target) continue;
 
-    const days = new Set();
-    Object.values(byMonth).forEach(m => Object.keys(m).forEach(d => days.add(d)));
-    return { byMonth: byMonth, plan: plan, days: days.size, today: today };
+      const ym = ymOf(d);
+      byMonth[ym] = byMonth[ym] || {};
+      byMonth[ym][d] = byMonth[ym][d] || {};
+      byMonth[ym][d][st.cfg.store] = { name: who, target: target, uploaded: ids.length, slots: ids };
+      any = true;
+    }
+    if (any) days++;
+  }
+
+  /* 삭제 후보 — 사진이 있는 과거 날짜 전부. 실제로 지울지는 기록 여부를 보고 purge 가 고른다 */
+  const plan = [];
+  STORES.forEach(st => {
+    const list = Array.from(have[st.cfg.store]).sort();
+    if (list.length) plan.push({ st: st, who: st.cfg.name || st.cfg.store, dates: list });
+  });
+
+  return { byMonth: byMonth, plan: plan, days: days, today: today,
+           from: start, to: end, capped: capped, cache: cache };
 }
 
 /* ② 기록을 쓰고, 다시 읽어 실제로 들어갔는지 확인한다.
    사진을 먼저 지우면 기록 쓰기가 실패했을 때 사진도 기록도 없이 끝난다 —
    그래서 삭제 버튼도 지우기 전에 이걸 먼저 부른다.
    내용이 이미 같으면 커밋을 만들지 않는다(같은 날을 여러 번 눌러도 커밋이 안 쌓이게). */
-async function writeLedger(byMonth, say){
+async function writeLedger(byMonth, say, cache){
+  cache = cache || {};
   let wrote = 0;
   for (const ym of Object.keys(byMonth)) {
     say(ym + ' 기록 중…');
-    const cur = await GH.getJson(LEDGER, ym+'.json').catch(()=>null) || {};
+    const cur = await ledgerMonth(ym, cache);
     const next = JSON.parse(JSON.stringify(cur));
     Object.entries(byMonth[ym]).forEach(([d, rec]) => { next[d] = Object.assign(next[d]||{}, rec); });
     if (JSON.stringify(next) === JSON.stringify(cur)) continue;
@@ -764,6 +819,7 @@ async function writeLedger(byMonth, say){
     const back = await GH.getJson(LEDGER, ym+'.json').catch(()=>null);
     const miss = Object.keys(byMonth[ym]).filter(d => !back || !back[d]);
     if (miss.length) throw new Error(ym + ' 기록이 저장되지 않았습니다 (' + miss.join(', ') + '). 사진은 그대로 둡니다.');
+    cache[ym] = back;
     wrote++;
   }
   return wrote;
@@ -778,18 +834,26 @@ document.getElementById('record').onclick = async () => {
   const say = t => { msg.textContent = t; };
   try {
     const scan = await scanPast(say);
-    if (!scan.days) { msg.className='msg'; msg.textContent='기록할 과거 날짜가 없습니다. 오늘 사진은 내일부터 기록됩니다.'; return; }
-    const wrote = await writeLedger(scan.byMonth, say);
+    if (!scan.days) {
+      msg.className='msg';
+      msg.textContent = scan.from
+        ? '기록할 것이 없습니다 — ' + scan.from + ' ~ ' + scan.to + ' 은 배식이 없는 날입니다.'
+        : '기록할 과거 날짜가 없습니다. 오늘 사진은 내일부터 기록됩니다.';
+      return;
+    }
+    const wrote = await writeLedger(scan.byMonth, say, scan.cache);
     msg.className='msg';
     msg.textContent = (wrote ? '기록 완료 — ' : '이미 기록돼 있습니다 — ')
-      + '과거 ' + num(scan.days) + '일치. 사진은 그대로 있습니다.';
+      + scan.from + ' ~ ' + scan.to + ' 중 ' + num(scan.days) + '일치. 사진은 그대로 있습니다.'
+      + (scan.capped ? ' 남은 기간이 있어 한 번 더 눌러야 합니다.' : '');
     await loadLedger();
   } catch (e) {
     msg.className='msg err'; msg.textContent='기록 실패: ' + e.message;
   } finally { btn.disabled=false; }
 };
 
-/* 가끔 누르는 쪽 — 기록을 확인한 뒤 어제 이전 사진을 지운다 */
+/* 가끔 누르는 쪽 — 기록을 확인한 뒤 어제 이전 사진을 지운다.
+   기록에 없는 날짜는 남긴다. 기록되지 않은 날을 지우면 그날은 사진도 숫자도 없이 사라진다 */
 document.getElementById('purge').onclick = async () => {
   const msg = document.getElementById('opsMsg');
   if (!LEDGER) { msg.className='msg err'; msg.textContent='기록 저장소가 없어 지울 수 없습니다.'; return; }
@@ -802,25 +866,37 @@ document.getElementById('purge').onclick = async () => {
     if (!scan.plan.length) { msg.className='msg'; msg.textContent='지울 과거 사진이 없습니다.'; return; }
 
     /* ③ 기록이 확인된 뒤에만 지운다. 중간에 실패해도 기록은 이미 남아 있다 */
-    await writeLedger(scan.byMonth, say);
+    await writeLedger(scan.byMonth, say, scan.cache);
 
-    let removed = 0;
+    let removed = 0, kept = 0;
     const failed = [];
     for (const p of scan.plan) {
-      say(p.who + ' 정리 중… (' + num(p.del.length) + '건)');
+      const paths = [];
+      for (const d of p.dates) {
+        const m = await ledgerMonth(ymOf(d), scan.cache);
+        if (!m[d] || !m[d][p.st.cfg.store]) { kept++; continue; }   // 기록에 없는 날은 남긴다
+        let files;
+        try { files = await GH.listDir(p.st.repo, 'photos/'+d); }
+        catch (e) { failed.push(p.who + ' ' + d + ': ' + e.message); continue; }
+        files.forEach(f => { if (f.type==='file') paths.push(f.path); });
+      }
+      if (!paths.length) continue;
+      say(p.who + ' 정리 중… (' + num(paths.length) + '건)');
       try {
-        await GH.batchCommit(p.st.repo, { deletePaths: p.del, message: 'purge: photos before ' + scan.today });
-        removed += p.del.length;
+        await GH.batchCommit(p.st.repo, { deletePaths: paths, message: 'purge: photos before ' + scan.today });
+        removed += paths.length;
       } catch (e) { failed.push(p.who + ': ' + e.message); }
     }
 
     if (failed.length) {
       msg.className='msg err';
-      msg.textContent = '기록은 남았습니다. 다만 일부 사진을 지우지 못했습니다 — '
+      msg.textContent = '기록은 남았습니다. 다만 일부를 지우지 못했습니다 — '
         + failed.join(' / ') + ' · 다시 눌러도 안전합니다.';
     } else {
       msg.className='msg';
-      msg.textContent = '정리 완료 — 기록을 남긴 뒤 사진 ' + num(removed) + '건을 지웠습니다. 용량은 히스토리에 남아 줄지 않습니다.';
+      msg.textContent = '정리 완료 — 기록을 남긴 뒤 사진 ' + num(removed) + '건을 지웠습니다.'
+        + (kept ? ' 아직 기록되지 않은 ' + num(kept) + '건(식당·날짜)은 남겼습니다.' : '')
+        + ' 용량은 히스토리에 남아 줄지 않습니다.';
     }
     await load(); await loadLedger();
   } catch (e) {
