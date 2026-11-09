@@ -64,11 +64,6 @@
    폰에서 .topbar 가 두 줄이 되면 로그아웃만 둘째 줄 왼쪽에 덩그러니 남았다 */
 .card h2 .linkbtn,.topbar .linkbtn{margin-left:auto}
 
-/* 사내망 업로드 차단 안내. 읽기는 되고 올리는 것만 막혀서, 막히기 전에 알려줘야 한다 */
-.lte-note{margin:0 0 14px;padding:11px 14px;border-radius:12px;
-  background:#fff8e8;border:1px solid #f0dfb8;border-left:5px solid #e0a53a;
-  font-size:12.5px;line-height:1.7;color:#8a6212;word-break:keep-all}
-.lte-note b{color:#6d4c0d}
 
 /* ---------- 끼니 탭 ---------- */
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px}

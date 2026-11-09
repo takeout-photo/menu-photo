@@ -104,12 +104,9 @@
     <section class="card">
       <h2><span class="num">02</span><span class="rname">사진 비교</span>
         <span class="hint">왼쪽이 앱 등록 사진, 오른쪽이 올라온 실물 사진입니다.</span></h2>
-      <p class="lte-note" id="upNote" hidden>
-        <b><span class="nw">사진 올리기는 회사 망에서 막힙니다.</span></b>
-        <span class="nw">사내 프록시가 올리는 요청만 차단하므로,</span>
-        <span class="nw">폰을 모바일 데이터(LTE)로 바꾸거나</span>
-        <span class="nw">테더링으로 연결한 뒤 올려 주세요.</span>
-        <span class="nw">지우기는 회사 망에서도 됩니다.</span><br>
+      <!-- 사내망/WiFi 안내는 뺐다(2026-11-09) — 막히면 그때 PHOTO.uploadErrText 가 알려준다.
+           사용법 한 줄만 남긴다. 조회 전용 키에는 올리기·지우기가 아예 없으므로 applyMode 가 숨긴다 -->
+      <p class="hint" id="upNote" hidden style="margin:-4px 0 14px">
         <span class="nw">빈 자리를 누르면 사진을 올리고,</span>
         <span class="nw">사진 위 <b>&#8635;</b> 로 다시 올리고 <b>&times;</b> 로 지웁니다.</span>
         <span class="nw">지운 사진은 되돌릴 수 없습니다.</span></p>
