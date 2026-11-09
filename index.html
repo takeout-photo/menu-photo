@@ -83,7 +83,7 @@
       <p class="hint" id="modeNote" hidden style="margin:-4px 0 14px">
         <span class="nw">기록 저장소에 접근할 수 없는 키입니다.</span>
         <span class="nw">맡은 식당의 현황만 조회할 수 있고,</span>
-        <span class="nw">마감·정리 기능은 쓸 수 없습니다.</span></p>
+        <span class="nw">기록·정리 기능은 쓸 수 없습니다.</span></p>
       <div class="date-row">
         <label class="f">조회 날짜<input type="date" id="date"></label>
         <button id="reload" class="iconbtn no-print" title="새로고침" aria-label="새로고침">
@@ -216,7 +216,7 @@ async function discover(){
 
 /* 조회 전용일 때 숨기는 것
    - 04 누적 현황: 기록 파일에 전 식당 수치가 같이 들어있어 업체에 보이면 안 된다
-   - 05 운영 · 마감: 마감(과거 사진 삭제)·히스토리 축소 버튼이 있는 카드
+   - 05 운영 · 기록: 기록 남기기·과거 사진 삭제·히스토리 축소 버튼이 있는 카드
    관리자 키인데 기록 저장소를 못 읽는 경우(키 만료·범위 실수)에도 같은 판정이 걸린다.
    그래서 "마감 버튼이 왜 없지?"로 끝나지 않게 01 에 사유를 띄운다. */
 function applyMode(){
@@ -602,7 +602,7 @@ function ymOf(d){ return d.slice(0,7); }
 
 async function loadLedger(){
   const note = document.getElementById('ledgerNote');
-  if (!LEDGER) { note.textContent = '기록 저장소를 찾지 못했습니다. 마감을 누르면 기록이 남지 않습니다.'; drawTrend([]); drawStores([]); return; }
+  if (!LEDGER) { note.textContent = '기록 저장소를 찾지 못했습니다. 기록 남기기를 눌러도 기록이 남지 않습니다.'; drawTrend([]); drawStores([]); return; }
   const led = await GH.getJson(LEDGER, ymOf(DATE)+'.json').catch(()=>null) || {};
   const days = Object.keys(led).sort();
   const trend = days.map(d => {
@@ -617,8 +617,8 @@ async function loadLedger(){
   drawTrend(trend);
   drawStores(Object.values(per).map(p=>({ label:p.name, rate: p.t? p.u/p.t : 0 })));
   note.textContent = days.length
-    ? ymOf(DATE)+' 기록 '+num(days.length)+'일치 · 마감할 때마다 누적됩니다.'
-    : ymOf(DATE)+' 기록이 아직 없습니다. 마감을 누르면 쌓이기 시작합니다.';
+    ? ymOf(DATE)+' 기록 '+num(days.length)+'일치 · 기록 남기기를 누를 때마다 누적됩니다.'
+    : ymOf(DATE)+' 기록이 아직 없습니다. 05 에서 기록 남기기를 누르면 쌓이기 시작합니다.';
 }
 
 /* 일자별 업로드율 — chart-kit 과 같은 색·격자 규칙을 따른다 */
