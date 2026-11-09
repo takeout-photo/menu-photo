@@ -103,7 +103,9 @@
 
     <section class="card">
       <h2><span class="num">02</span><span class="rname">사진 비교</span>
-        <span class="hint">왼쪽이 앱 등록 사진, 오른쪽이 올라온 실물 사진입니다.</span></h2>
+        <span class="hint"><span class="nw">왼쪽이 앱 등록 사진,</span>
+          <span class="nw">오른쪽이 올라온 실물 사진입니다.</span>
+          <span class="nw">사진을 누르면 크게 보입니다.</span></span></h2>
       <!-- 사내망/WiFi 안내는 뺐다(2026-11-09) — 막히면 그때 PHOTO.uploadErrText 가 알려준다.
            사용법 한 줄만 남긴다. 조회 전용 키에는 올리기·지우기가 아예 없으므로 applyMode 가 숨긴다 -->
       <p class="hint" id="upNote" hidden style="margin:-4px 0 14px">
@@ -392,7 +394,8 @@ function cardHtml(st, s){
   const d = DATA[st.cfg.store], have = d.have[s.slotId];
   const key = esc(st.cfg.store) + '|' + esc(s.slotId);
   const app = s.appThumb
-    ? `<img src="${esc(s.appThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    ? `<img src="${esc(s.appThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"
+        data-zoom="${esc(s.appPhoto || '')}" data-zcap="${esc(s.name)}" data-zsub="앱 등록 사진">`
     : `<div class="ph na">앱 사진 없음</div>`;
   /* 조회 전용 키(업체 관리자)는 토큰이 Contents: Read-only 라 올리기·지우기가 403 이다.
      눌러봐야 실패할 버튼을 보여줄 이유가 없어 화면에서도 치운다.
@@ -405,7 +408,8 @@ function cardHtml(st, s){
       + `</div>`
     : '';
   const real = have
-    ? `<img data-lazy="${key}" alt="">` + acts
+    ? `<img data-lazy="${key}" alt="" data-zoom="" data-zcap="${esc(s.name)}"
+        data-zsub="실물 사진${have.time ? ' · ' + esc(have.time) : ''}">` + acts
     : canEdit
       ? `<div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>사진 올리기</span></div>`
       : `<div class="ph na">미업로드</div>`;
@@ -465,6 +469,12 @@ function renderCompare(){
   });
   host.querySelectorAll('[data-file]').forEach(inp => {
     inp.onchange = () => { if (inp.files && inp.files[0]) uploadPhoto(inp.dataset.file, inp.files[0]); inp.value = ''; };
+  });
+
+  /* 사진을 눌러 크게 보기. ↻·× 는 사진 위에 떠 있어 먼저 가로채고,
+     빈 자리의 올리기 클릭과도 겁치지 않는다 — 빈 자리에는 img 가 없다 */
+  host.querySelectorAll('img[data-zoom]').forEach(im => {
+    im.onclick = ev => { ev.stopPropagation(); PHOTO.zoomImg(im); };
   });
 
   /* 사진은 보일 때만 받는다 — 하루 최대 141장이라 한 번에 받으면 느리다 */

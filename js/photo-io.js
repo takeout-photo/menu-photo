@@ -110,10 +110,98 @@
     return '삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.\n(' + ((e && e.message) || '알 수 없는 오류') + ')';
   }
 
+  /* ---------- 확대 보기 ----------
+     비교 화면의 사진은 1:1 로 잘라 보여준다(object-fit:cover). 가장자리가 잘려서
+     "같은 메뉴인가" 는 봐도 "구성과 양이 같은가" 는 잘 안 보인다. 눌러서 크게 본다.
+     앱 사진은 화면에 거는 게 썸네일이라, 확대할 때 원본(savePath)으로 바꿔 받는다.
+     원본은 CORS 헤더가 없어 canvas 로는 못 읽지만 <img> 표시는 된다(계획서 §1-1).
+     사진에 tabindex 는 걸지 않는다 — 하루 141장이면 탭 순회가 282번 늘어 키보드 이동이 망가진다 */
+  var zEl = null, zPrev = null;
+
+  function zBuild() {
+    var el = document.createElement('div');
+    el.className = 'zoom no-print';
+    el.hidden = true;
+    el.innerHTML =
+      '<div class="zoom-bd"></div>' +
+      '<figure class="zoom-fig">' +
+        '<div class="zoom-ph">' +
+          '<img alt="" referrerpolicy="no-referrer">' +
+          '<span class="zoom-spin" hidden></span>' +
+        '</div>' +
+        '<figcaption><b></b><span></span></figcaption>' +
+      '</figure>' +
+      '<button type="button" class="zoom-x" aria-label="닫기">&times;</button>';
+    /* 사진 자체를 누른 건 더 보려는 동작이라 닫지 않는다. 바깥과 × 는 닫는다 */
+    el.addEventListener('click', function (ev) {
+      if (!ev.target.closest('.zoom-ph')) closeZoom();
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (zEl && !zEl.hidden && ev.key === 'Escape') { ev.preventDefault(); closeZoom(); }
+    });
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function closeZoom() {
+    if (!zEl || zEl.hidden) return;
+    zEl.hidden = true;
+    zEl.dataset.want = '';
+    zEl.querySelector('img').removeAttribute('src');   // blob 을 붙잡고 있지 않게
+    document.documentElement.style.overflow = '';
+    if (zPrev && zPrev.focus) { try { zPrev.focus(); } catch (e) {} }
+    zPrev = null;
+  }
+
+  /* opt: { src 지금 보여줄 주소(이미 받아둔 썸네일·blob),
+            full 원본(없으면 생략), caption 메뉴명, sub 보조설명 } */
+  function zoom(opt) {
+    opt = opt || {};
+    var src = opt.src || opt.full;
+    if (!src) return;
+    if (!zEl) zEl = zBuild();
+    var img = zEl.querySelector('img'), spin = zEl.querySelector('.zoom-spin');
+    zEl.querySelector('figcaption b').textContent = opt.caption || '';
+    zEl.querySelector('figcaption span').textContent = opt.sub || '';
+    img.src = src;
+    zPrev = document.activeElement;
+    zEl.hidden = false;
+    document.documentElement.style.overflow = 'hidden';   // 뒷면이 같이 스크롤되지 않게
+    zEl.querySelector('.zoom-x').focus();
+
+    /* 썸네일을 먼저 띄우고 원본을 받아 바꿔 끼운다 — 빈 화면을 보여주지 않으려고.
+       받는 사이에 다른 사진을 열 수 있으니 want 로 마지막 요청만 반영한다 */
+    var want = (opt.full && opt.full !== src) ? opt.full : '';
+    zEl.dataset.want = want;
+    spin.hidden = !want;
+    if (!want) return;
+    var pre = new Image();
+    pre.referrerPolicy = 'no-referrer';
+    pre.onload = function () {
+      if (zEl.hidden || zEl.dataset.want !== want) return;
+      spin.hidden = true; img.src = want;
+    };
+    pre.onerror = function () {        // 원본이 없거나 못 받으면 썸네일 그대로 둔다
+      if (zEl.dataset.want === want) spin.hidden = true;
+    };
+    pre.src = want;
+  }
+
+  /* <img data-zoom="원본주소" data-zcap="제목" data-zsub="설명"> 을 눌렀을 때.
+     실물 사진은 지연 로딩이라 src 가 아직 안 붙었을 수 있다 — 그때는 열지 않는다 */
+  function zoomImg(img) {
+    if (!img) return;
+    var src = img.currentSrc || img.getAttribute('src') || '';
+    if (!src) return;
+    zoom({ src: src, full: img.getAttribute('data-zoom') || '',
+           caption: img.getAttribute('data-zcap') || '', sub: img.getAttribute('data-zsub') || '' });
+  }
+
   global.PHOTO = {
     MAX_EDGE: MAX_EDGE, JPEG_Q: JPEG_Q,
     loadBitmap: loadBitmap, shrink: shrink, hhmmNow: hhmmNow,
     photoPath: photoPath, uploadMsg: uploadMsg, deleteMsg: deleteMsg,
-    uploadErrText: uploadErrText, deleteErrText: deleteErrText
+    uploadErrText: uploadErrText, deleteErrText: deleteErrText,
+    zoom: zoom, zoomImg: zoomImg, closeZoom: closeZoom
   };
 })(window);

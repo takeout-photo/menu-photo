@@ -62,8 +62,9 @@
     <section class="card">
       <h2><span class="num">02</span><span class="rname" id="mealTitle">촬영 · 업로드</span>
         <span class="hint"><span class="nw">사진을 고르면 바로 올라갑니다.</span>
-          <span class="nw">다시 찍으면 덮어쓰고,</span>
-          <span class="nw">사진 위 × 를 누르면 지워집니다.</span></span></h2>
+          <span class="nw">올린 사진을 누르면 크게 보이고,</span>
+          <span class="nw">사진 위 <b>&#8635;</b> 로 다시 찍고 <b>&times;</b> 로 지우거나
+            아래 큰 버튼을 씁니다.</span></span></h2>
       <div class="slots" id="slots"></div>
       <p class="empty-note" id="slotsNote" hidden></p>
     </section>
@@ -219,11 +220,16 @@ function renderKpis(){
 function slotHtml(s){
   const have = HAVE[s.slotId];
   const app = s.appThumb
-    ? `<img src="${esc(s.appThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    ? `<img src="${esc(s.appThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"
+        data-zoom="${esc(s.appPhoto || '')}" data-zcap="${esc(s.name)}" data-zsub="앱 등록 사진">`
     : `<div class="ph na">앱 사진 없음</div>`;
   const real = have
-    ? `<img data-url="${esc(s.slotId)}" alt="" loading="lazy">`
-      + `<div class="acts"><button type="button" data-del="${esc(s.slotId)}"
+    ? `<img data-url="${esc(s.slotId)}" alt="" loading="lazy"
+        data-zoom="" data-zcap="${esc(s.name)}" data-zsub="올린 실물 사진">`
+      + `<div class="acts">`
+      + `<button type="button" class="swap" data-pick="${esc(s.slotId)}"
+          title="다시 촬영" aria-label="다시 촬영">&#8635;</button>`
+      + `<button type="button" data-del="${esc(s.slotId)}"
           title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button></div>`
     : `<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>촬영하기</span></div>`;
   return `<div class="slot ${have?'done':''}" data-slot="${esc(s.slotId)}">
@@ -235,7 +241,7 @@ function slotHtml(s){
     <div class="panes">
       <div class="pane"><div class="cap">앱 등록 사진</div><div class="ph">${app}</div></div>
       <div class="pane real"><div class="cap">실물 사진</div>
-        <div class="ph ${have?'':'empty'}" data-pick="${esc(s.slotId)}">${real}</div></div>
+        <div class="ph ${have?'':'empty'}"${have?'':` data-pick="${esc(s.slotId)}"`}>${real}</div></div>
     </div>
     <div class="slot-act">
       <button class="${have?'':'primary'}" data-pick="${esc(s.slotId)}">${have?'다시 촬영':'사진 올리기'}</button>
@@ -258,7 +264,14 @@ function renderSlots(){
   host.innerHTML = list.map(slotHtml).join('');
 
   host.querySelectorAll('[data-pick]').forEach(el => {
-    el.onclick = () => host.querySelector('[data-file="' + CSS.escape(el.dataset.pick) + '"]').click();
+    el.onclick = ev => { ev.stopPropagation();
+      host.querySelector('[data-file="' + CSS.escape(el.dataset.pick) + '"]').click(); };
+  });
+  /* 사진을 눌러 크게 보기. 사진이 있는 칸은 .ph 에서 data-pick 을 뻐다 —
+     확인하려고 누를 때마다 카메라가 뜨면 정작 볼 수가 없다.
+     다시 촬영은 사진 위 ↻ 와 아래 큰 버튼으로 간다 */
+  host.querySelectorAll('img[data-zoom]').forEach(im => {
+    im.onclick = ev => { ev.stopPropagation(); PHOTO.zoomImg(im); };
   });
   /* X 는 사진(.ph) 안에 있고 .ph 는 누르면 카메라가 열리는 자리다.
      전파를 막지 않으면 지우기를 누를 때 카메라까지 같이 뜬다 */
@@ -330,12 +343,20 @@ async function upload(slotId, file){
       card.querySelector('.st').innerHTML = '<span class="pill ok">완료</span>';
       const box = card.querySelector('.pane.real .ph');
       box.classList.remove('empty');
-      box.innerHTML = '<img data-url="' + slotId + '" src="' + HAVE[slotId].url + '" alt="">'
-        + '<div class="acts"><button type="button" data-del="' + slotId
-        + '" title="이 사진 지우기" aria-label="이 사진 지우기">×</button></div>';
-      box.setAttribute('data-pick', slotId);
-      box.onclick = () => card.querySelector('[data-file]').click();
-      /* 방금 만든 X 는 renderSlots 의 일괄 바인딩을 못 받는다 — 여기서 직접 건다 */
+      box.innerHTML = '<img data-url="' + slotId + '" src="' + HAVE[slotId].url + '" alt=""'
+        + ' data-zoom="" data-zcap="' + esc(slot ? slot.name : slotId) + '" data-zsub="올린 실물 사진">'
+        + '<div class="acts">'
+        + '<button type="button" class="swap" data-pick="' + slotId
+        + '" title="다시 촬영" aria-label="다시 촬영">&#8635;</button>'
+        + '<button type="button" data-del="' + slotId
+        + '" title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button></div>';
+      /* 사진이 생겼으니 칸을 누르면 카메라가 아니라 확대다 */
+      box.removeAttribute('data-pick');
+      box.onclick = null;
+      /* 방금 만든 사진·↻·× 는 renderSlots 의 일괄 바인딩을 못 받는다 — 여기서 직접 건다 */
+      box.querySelector('img').onclick = ev => { ev.stopPropagation(); PHOTO.zoomImg(ev.currentTarget); };
+      const swap = box.querySelector('[data-pick]');
+      if (swap) swap.onclick = ev => { ev.stopPropagation(); card.querySelector('[data-file]').click(); };
       const del = box.querySelector('[data-del]');
       if (del) del.onclick = ev => { ev.stopPropagation(); removePhoto(slotId); };
       const btn = card.querySelector('.slot-act button');
