@@ -177,13 +177,6 @@
 .prog i{display:block;height:100%;width:0;border-radius:99px;
   background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .25s}
 
-/* ---------- 미업로드 목록 ---------- */
-.missing{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:7px}
-.missing li{display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:12px;
-  background:#f8f9ff;border:1px solid #eceefb;font-size:13px}
-.missing li .r{font-weight:700;white-space:nowrap}
-.missing li .m{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sub)}
-
 /* ---------- 비어있음 / 오류 ---------- */
 .empty-note{padding:34px 20px;text-align:center;color:var(--sub);font-size:13.5px}
 
