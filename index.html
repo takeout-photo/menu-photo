@@ -75,13 +75,16 @@
   <div id="app" hidden>
     <section class="card">
       <h2><span class="num">01</span><span class="rname">오늘 현황</span>
-        <span class="pill" id="modePill" hidden>조회 전용</span>
+        <span class="pill" id="modePill" hidden>업체 관리자</span>
         <span class="hint" id="rateHint"></span>
         <button id="logout" class="linkbtn no-print">로그아웃</button></h2>
       <p class="hint" id="modeNote" hidden style="margin:-4px 0 14px">
-        <span class="nw">기록 저장소에 접근할 수 없는 키입니다.</span>
-        <span class="nw">맡은 식당의 현황만 조회할 수 있고,</span>
-        <span class="nw">기록·정리 기능은 쓸 수 없습니다.</span></p>
+        <span id="modeVendor"><span class="nw">기록 저장소가 키 범위에 없습니다.</span>
+          <span class="nw">맡은 식당의 사진은 올리고 지울 수 있고,</span>
+          <span class="nw">누적 기록·정리 기능은 쓸 수 없습니다.</span></span>
+        <span id="modeRead" hidden><span class="nw">이 키로는 사진을 올리거나 지울 수 없습니다.</span>
+          <span class="nw">조회만 됩니다 —</span>
+          <span class="nw">쓰기가 필요하면 담당자에게 문의하세요.</span></span></p>
       <div class="date-row">
         <label class="f">조회 날짜<input type="date" id="date"></label>
         <button id="reload" class="iconbtn no-print" title="새로고침" aria-label="새로고침">
@@ -105,7 +108,7 @@
           <span class="nw">오른쪽이 올라온 실물 사진입니다.</span>
           <span class="nw">사진을 누르면 크게 보입니다.</span></span></h2>
       <!-- 사내망/WiFi 안내는 뺐다(2026-11-09) — 막히면 그때 PHOTO.uploadErrText 가 알려준다.
-           사용법 한 줄만 남긴다. 조회 전용 키에는 올리기·지우기가 아예 없으므로 applyMode 가 숨긴다 -->
+           사용법 한 줄만 남긴다. 쓰기가 막힌 키에서는 버튼이 없으므로 applyMode 가 이 줄도 숨긴다 -->
       <p class="hint" id="upNote" hidden style="margin:-4px 0 14px">
         <span class="nw">빈 자리를 누르면 사진을 올리고,</span>
         <span class="nw">사진 위 <b>&#8635;</b> 로 다시 올리고 <b>&times;</b> 로 지웁니다.</span>
@@ -179,7 +182,8 @@
 const K_TOK = 'mp_admin_tok';
 let STORES = [];      // [{repo, cfg}]
 let LEDGER = null;    // owner/repo
-let VENDOR = false;   // true = 조회 전용 (기록 저장소가 토큰 범위 밖)
+let VENDOR = false;   // true = 기록 저장소가 토큰 범위 밖 (업체 관리자 키 / 범위가 어긋난 관리자 키)
+let READONLY = false; // true = 쓰기가 권한으로 막힌 키. 눌러보기 전에는 알 수 없다
 let DATE = MENU.dateStr();
 let MEAL = 0;         // 0 = 전체
 let STORE = '';       // '' = 전체 (식당 탭 선택값)
@@ -191,7 +195,7 @@ const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&l
 /* ---------- 로그인 ---------- */
 async function discover(){
   const repos = await GH.myRepos();
-  STORES = []; LEDGER = null; VENDOR = false;
+  STORES = []; LEDGER = null; VENDOR = false; READONLY = false;
   for (const r of repos) {
     const c = await GH.getJson(r.full_name, 'config.json').catch(()=>null);
     if (!c) continue;
@@ -200,24 +204,47 @@ async function discover(){
   }
   STORES.sort((a,b) => (a.cfg.no||99) - (b.cfg.no||99));
   if (!STORES.length) throw new Error('식당 저장소를 찾지 못했습니다. 키 범위를 확인하세요.');
-  /* 기록 저장소가 안 보이면 업체 조회용 키다. 한 업체가 식당 여러 곳을 맡으면
-     그 저장소들만 고른 Read-only 키를 주는데, 그 키로는 마감도 누적 기록도
-     건드릴 수 없고 건드려서도 안 된다. 쓰기를 실제로 막는 건 토큰 권한이고,
-     여기서는 쓸 수 없는 기능을 화면에서 치우기만 한다. */
+  /* 기록 저장소가 안 보이면 업체 관리자 키다. 한 업체가 식당 여러 곳을 맡으면
+     그 저장소들만 고른 키를 하나 주는데, 사진은 각 식당 키와 똑같이 올리고 지워야 하고
+     누적 기록·정리는 건드리면 안 된다 — 기록 파일에는 다른 업체 수치가 같이 들어 있다.
+     쓰기 가능 여부와는 별개 판정이다. 예전에 둘을 한 플래그로 묶어 둔 탓에
+     토큰에 쓰기를 줘도 올리기 버튼이 나오지 않았다(2026-11-09 분리). */
   VENDOR = !LEDGER;
 }
 
-/* 조회 전용일 때 숨기는 것
-   - 03 누적 현황: 기록 파일에 전 식당 수치가 같이 들어있어 업체에 보이면 안 된다
-   - 04 운영 · 기록: 기록 남기기·과거 사진 삭제 버튼이 있는 카드
-   관리자 키인데 기록 저장소를 못 읽는 경우(키 만료·범위 실수)에도 같은 판정이 걸린다.
-   그래서 "마감 버튼이 왜 없지?"로 끝나지 않게 01 에 사유를 띄운다. */
+/* 화면에서 치우는 것 두 가지 — 기준이 서로 다르다
+   - 기록 저장소가 범위 밖(VENDOR): 03 누적 현황 · 04 운영 · 기록.
+     기록 파일에 전 식당 수치가 같이 들어있어 업체에 보이면 안 되고,
+     기록 남기기·과거 사진 삭제도 그 저장소를 쓴다
+   - 쓰기가 막힌 키(READONLY): 02 의 올리기·지우기.
+     토큰 권한은 눌러보기 전에 알 수 없어, 403 을 한 번 받은 뒤에 켜진다
+   관리자 키인데 기록 저장소를 못 읽는 경우(키 만료·범위 실수)도 VENDOR 로 잡힌다.
+   그래서 "기록 버튼이 왜 없지?"로 끝나지 않게 01 에 사유를 띄운다. */
 function applyMode(){
   document.getElementById('cardLedger').hidden = VENDOR;
   document.getElementById('cardOps').hidden = VENDOR;
-  document.getElementById('upNote').hidden = VENDOR;
-  document.getElementById('modePill').hidden = !VENDOR;
-  document.getElementById('modeNote').hidden = !VENDOR;
+  document.getElementById('upNote').hidden = READONLY;
+  const pill = document.getElementById('modePill');
+  pill.hidden = !(VENDOR || READONLY);
+  pill.textContent = READONLY ? '조회 전용' : '업체 관리자';
+  document.getElementById('modeNote').hidden = !(VENDOR || READONLY);
+  document.getElementById('modeVendor').hidden = READONLY;
+  document.getElementById('modeRead').hidden = !READONLY;
+}
+
+/* 커밋 author 는 전용 계정 하나뿐이라, 누가 올렸는지는 커밋 메시지에만 남는다.
+   꼬리표 없음 = 식당이 직접, '관리자' = 사내 담당자, '업체 관리자' = 여러 식당을 맡은 업체 쪽.
+   메시지 앞머리(slotId HH:MM)만 파싱하므로 꼬리표에 공백이 있어도 괜찮다 */
+function byLabel(){ return VENDOR ? '업체 관리자' : '관리자'; }
+
+/* 쓰기가 권한 때문에 막혔으면 그때부터 조회 전용으로 다룬다.
+   버튼을 그대로 두면 누를 때마다 같은 실패를 반복하게 된다.
+   레이트리밋 403 은 isDenied 가 걸러낸다 — 그건 기다리면 풀린다 */
+function denied(e){
+  if (READONLY || !GH.isDenied(e)) return;
+  READONLY = true;
+  applyMode();
+  repaint();
 }
 
 async function start(token){
@@ -350,7 +377,7 @@ async function load(){
   }));
 
   repaint();
-  /* 조회 전용 키로는 둘 다 쓸 수 없다. renderOps 는 식당 수만큼 GET /repos 를 날린다 */
+  /* 둘 다 기록 저장소가 있어야 돌아간다. renderOps 는 식당 수만큼 GET /repos 를 날린다 */
   if (!VENDOR) { renderOps(); loadLedger(); }
 }
 
@@ -389,10 +416,10 @@ function cardHtml(st, s){
     ? `<img src="${esc(s.appThumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"
         data-zoom="${esc(s.appPhoto || '')}" data-zcap="${esc(s.name)}" data-zsub="앱 등록 사진">`
     : `<div class="ph na">앱 사진 없음</div>`;
-  /* 조회 전용 키(업체 관리자)는 토큰이 Contents: Read-only 라 올리기·지우기가 403 이다.
-     눌러봐야 실패할 버튼을 보여줄 이유가 없어 화면에서도 치운다.
-     쓰기를 실제로 막는 건 어디까지나 토큰 권한이고 이건 표시일 뿐이다 */
-  const canEdit = !VENDOR;
+  /* 올리기·지우기 버튼. 업체 관리자 키도 토큰에 Contents: Read and write 가 있으면
+     각 식당 키와 똑같이 쓴다 — 기록 저장소가 안 보이는 것과는 상관이 없다.
+     쓰기를 실제로 막는 건 어디까지나 토큰 권한이고, 이건 표시일 뿐이다 */
+  const canEdit = !READONLY;
   const acts = (have && canEdit)
     ? `<div class="acts">`
       + `<button type="button" class="swap" data-pick="${key}" title="사진 다시 올리기" aria-label="사진 다시 올리기">&#8635;</button>`
@@ -530,10 +557,10 @@ async function uploadPhoto(key, file){
   busyPhoto(key, '올리는 중…');
   const path = PHOTO.photoPath(DATE, slotId);
   try {
-    /* 커밋 메시지에 '관리자' 를 남긴다 — 커밋 author 는 전용 계정 하나라
-       업체가 올린 것과 구분할 단서가 메시지밖에 없다 */
+    /* 커밋 메시지에 누구인지 남긴다 — 커밋 author 는 전용 계정 하나라
+       업체가 직접 올린 것과 구분할 단서가 메시지밖에 없다 */
     const r = await GH.putFile(st.repo, path, blob,
-      PHOTO.uploadMsg(slotId, slot ? slot.name : '', '관리자'));
+      PHOTO.uploadMsg(slotId, slot ? slot.name : '', byLabel()));
     const prev = d.have[slotId];
     if (prev && prev.url) URL.revokeObjectURL(prev.url);
     d.have[slotId] = { path: path, sha: r && r.content && r.content.sha,
@@ -541,6 +568,7 @@ async function uploadPhoto(key, file){
     repaint();
   } catch (e) {
     busyPhoto(key, null);
+    denied(e);
     alert(PHOTO.uploadErrText(e, { admin: true }));
   }
 }
@@ -558,12 +586,13 @@ async function removePhoto(key){
   busyPhoto(key, '지우는 중…');
   try {
     await GH.deleteFile(st.repo, have.path, have.sha,
-      PHOTO.deleteMsg(slotId, slot ? slot.name : '', '관리자'));
+      PHOTO.deleteMsg(slotId, slot ? slot.name : '', byLabel()));
     if (have.url) URL.revokeObjectURL(have.url);
     delete d.have[slotId];
     repaint();
   } catch (e) {
     busyPhoto(key, null);
+    denied(e);
     alert(PHOTO.deleteErrText(e));
   }
 }

@@ -115,6 +115,11 @@
       m.indexOf('rate limit') >= 0 || m.indexOf('abuse') >= 0 || m.indexOf('try again') >= 0;
   }
 
+  /* 권한 때문에 막힌 403 인가. 403 은 레이트리밋에도 쓰이므로 둘을 갈라야 한다 —
+     한도에 걸린 관리자 키를 "조회 전용" 으로 단정해 버튼을 치우면,
+     한 시간이 지나 한도가 풀려도 화면은 돌아오지 않는다 */
+  function isDenied(e) { return !!e && e.status === 403 && !isRetryable(e); }
+
   /* 일시 오류 재시도. Retry-After 를 우선 존중한다 */
   async function withRetry(fn) {
     var delay = 2000;
@@ -381,7 +386,7 @@
     statFile: statFile, getText: getText, getJson: getJson,
     getObjectUrl: getObjectUrl, listDir: listDir, tree: tree, commits: commits,
     putFile: putFile, putJson: putJson, deleteFile: deleteFile,
-    batchCommit: batchCommit,
+    batchCommit: batchCommit, isDenied: isDenied,
     _req: req, _raw: raw
   };
 })(window);
