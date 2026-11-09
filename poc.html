@@ -154,16 +154,7 @@ $('run').onclick = async () => {
     pass(i, 'Accept: application/vnd.github.raw 로 본문을 바로 받았습니다. base64 를 거치지 않아도 됩니다.', txt);
   }catch(e){ fail(i,'실패 — 사진 표시 방식을 download_url 로 바꿔야 합니다.', e.message); }
 
-  /* 5. Contents 권한만으로 부모 없는 커밋 + force ref */
-  i = add('Contents 권한만으로 히스토리 축소 (부모 없는 커밋 + force)');
-  try{
-    const c = await GH.collapseHistory(ok, { message: 'pre-flight: reset history' });
-    pass(i, '성공 — 부모 없는 커밋 '+c.sha.slice(0,7)+' 로 ref 를 강제 갱신했습니다. 보존 전략을 쓸 수 있습니다.');
-  }catch(e){
-    fail(i, '실패 — 히스토리 축소를 쓸 수 없습니다. 저장소 용량 관리는 "분기 재생성"만으로 가야 합니다. (룰셋이 force push 를 막고 있을 수 있습니다.)', e.message+'\n'+short(e.payload||{}));
-  }
-
-  /* 6. 메뉴 API 외부 도달 — 주소·코드는 config.json 에서 읽는다(공개 번들에 식별정보를 넣지 않기 위해).
+  /* 5. 메뉴 API 외부 도달 — 주소·코드는 config.json 에서 읽는다(공개 번들에 식별정보를 넣지 않기 위해).
         실제 화면과 같은 MENU.fetchSlots 를 쓰므로 필터까지 한 번에 검증된다 */
   i = add('메뉴 API 외부 도달 + 대상 메뉴 추출 (이 기기의 네트워크에서)');
   try{

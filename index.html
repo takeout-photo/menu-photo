@@ -155,7 +155,6 @@
       <div class="row" style="margin-top:4px">
         <button id="record">기록 남기기</button>
         <button id="purge" class="danger">과거 사진 삭제</button>
-        <button id="collapse" class="danger">저장소 히스토리 축소</button>
       </div>
       <p class="msg" id="opsMsg"></p>
       <details style="margin-top:14px">
@@ -216,7 +215,7 @@ async function discover(){
 
 /* 조회 전용일 때 숨기는 것
    - 04 누적 현황: 기록 파일에 전 식당 수치가 같이 들어있어 업체에 보이면 안 된다
-   - 05 운영 · 기록: 기록 남기기·과거 사진 삭제·히스토리 축소 버튼이 있는 카드
+   - 05 운영 · 기록: 기록 남기기·과거 사진 삭제 버튼이 있는 카드
    관리자 키인데 기록 저장소를 못 읽는 경우(키 만료·범위 실수)에도 같은 판정이 걸린다.
    그래서 "마감 버튼이 왜 없지?"로 끝나지 않게 01 에 사유를 띄운다. */
 function applyMode(){
@@ -902,21 +901,6 @@ document.getElementById('purge').onclick = async () => {
   } catch (e) {
     msg.className='msg err'; msg.textContent='삭제 실패: ' + e.message;
   } finally { btn.disabled=false; }
-};
-
-document.getElementById('collapse').onclick = async () => {
-  const msg = document.getElementById('opsMsg');
-  if (!confirm('각 식당 저장소의 커밋 이력을 1개로 줄입니다.\n현재 파일은 그대로 남습니다.\n\n계속할까요?')) return;
-  const btn=document.getElementById('collapse'); btn.disabled=true;
-  msg.className='msg'; msg.textContent='축소 중…';
-  const fails=[];
-  for (const st of STORES) {
-    try { await GH.collapseHistory(st.repo, { message: 'reset history' }); }
-    catch(e){ fails.push((st.cfg.name||st.cfg.store)+': '+e.message); }
-  }
-  if (fails.length) { msg.className='msg err'; msg.textContent='일부 실패 — '+fails.join(' / '); }
-  else { msg.className='msg'; msg.textContent='완료 — 용량 반영에는 시간이 걸립니다.'; renderOps(); }
-  btn.disabled=false;
 };
 
 /* ---------- 자동 로그인 ---------- */

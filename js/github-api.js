@@ -375,36 +375,13 @@
     });
   }
 
-  /* 히스토리 축소 — 부모 없는 커밋으로 ref 를 강제 갱신한다.
-     주의: 도달 불가 객체는 한동안 SHA 로 꺼낼 수 있다. 확실한 폐기는 저장소 재생성뿐(계획서 §3①) */
-  function collapseHistory(full, opt) {
-    opt = opt || {};
-    var branch = opt.branch || 'main';
-    var message = opt.message || 'reset history';
-    return serial(function () {
-      return withRetry(async function () {
-        var ref = await req('/repos/' + full + '/git/ref/heads/' + encodeURIComponent(branch));
-        var commit = await req('/repos/' + full + '/git/commits/' + ref.object.sha);
-        var fresh = await req('/repos/' + full + '/git/commits', {
-          method: 'POST',
-          body: { message: message, tree: commit.tree.sha, parents: [] }
-        });
-        await req('/repos/' + full + '/git/refs/heads/' + encodeURIComponent(branch), {
-          method: 'PATCH',
-          body: { sha: fresh.sha, force: true }
-        });
-        return fresh;
-      });
-    });
-  }
-
   global.GH = {
     setToken: setToken, hasToken: hasToken, rate: rate,
     me: me, myRepos: myRepos, repoInfo: repoInfo,
     statFile: statFile, getText: getText, getJson: getJson,
     getObjectUrl: getObjectUrl, listDir: listDir, tree: tree, commits: commits,
     putFile: putFile, putJson: putJson, deleteFile: deleteFile,
-    batchCommit: batchCommit, collapseHistory: collapseHistory,
+    batchCommit: batchCommit,
     _req: req, _raw: raw
   };
 })(window);
