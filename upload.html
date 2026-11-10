@@ -215,6 +215,38 @@ function renderKpis(){
 }
 
 /* ---------- 슬롯 ---------- */
+
+/* 사진 위에 뜨는 작은 버튼 3개. slotHtml 과 '올린 직후 카드를 다시 그리는 자리' 가
+   같이 쓴다 — 두 군데서 따로 짓고 있었고, 버튼이 늘 때마다 한쪽만 고치게 된다 */
+function actsHtml(slotId){
+  const k = esc(slotId);
+  return '<div class="acts">'
+    + '<button type="button" class="fit" data-crop="' + k
+      + '" title="사진 맞추기 (잘리는 부분 고치기)" aria-label="사진 맞추기">'
+      + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M6.1 1 6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.1 16 6a2 2 0 0 1 2 2v15"/></svg></button>'
+    + '<button type="button" class="swap" data-pick="' + k
+      + '" title="다시 촬영" aria-label="다시 촬영">&#8635;</button>'
+    + '<button type="button" data-del="' + k
+      + '" title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button></div>';
+}
+
+/* 사진 칸 안의 버튼을 손으로 다시 지었을 때 거는 자리.
+   renderSlots 의 일괄 바인딩은 그때 있던 요소만 잡으므로 새로 만든 건 못 받는다.
+   .ph 는 누르면 카메라가 열리는 자리라 전파를 반드시 막는다 */
+function bindBox(card, slotId){
+  const box = card.querySelector('.pane.real .ph');
+  const img = box.querySelector('img');
+  if (img) img.onclick = ev => { ev.stopPropagation(); PHOTO.zoomImg(ev.currentTarget); };
+  const swap = box.querySelector('[data-pick]');
+  if (swap) swap.onclick = ev => { ev.stopPropagation(); card.querySelector('[data-file]').click(); };
+  const cr = box.querySelector('[data-crop]');
+  if (cr) cr.onclick = ev => { ev.stopPropagation(); adjustPhoto(slotId); };
+  const del = box.querySelector('[data-del]');
+  if (del) del.onclick = ev => { ev.stopPropagation(); removePhoto(slotId); };
+}
+
 function slotHtml(s){
   const have = HAVE[s.slotId];
   const app = s.appThumb
@@ -224,11 +256,7 @@ function slotHtml(s){
   const real = have
     ? `<img data-url="${esc(s.slotId)}" alt="" loading="lazy"
         data-zoom="" data-zcap="${esc(s.name)}" data-zsub="올린 실물 사진">`
-      + `<div class="acts">`
-      + `<button type="button" class="swap" data-pick="${esc(s.slotId)}"
-          title="다시 촬영" aria-label="다시 촬영">&#8635;</button>`
-      + `<button type="button" data-del="${esc(s.slotId)}"
-          title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button></div>`
+      + actsHtml(s.slotId)
     : `<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>촬영하기</span></div>`;
   return `<div class="slot ${have?'done':''}" data-slot="${esc(s.slotId)}">
     <div class="slot-hd">
@@ -273,6 +301,9 @@ function renderSlots(){
   });
   /* X 는 사진(.ph) 안에 있고 .ph 는 누르면 카메라가 열리는 자리다.
      전파를 막지 않으면 지우기를 누를 때 카메라까지 같이 뜬다 */
+  host.querySelectorAll('[data-crop]').forEach(el => {
+    el.onclick = ev => { ev.stopPropagation(); adjustPhoto(el.dataset.crop); };
+  });
   host.querySelectorAll('[data-del]').forEach(el => {
     el.onclick = ev => { ev.stopPropagation(); removePhoto(el.dataset.del); };
   });
@@ -313,19 +344,50 @@ function busy(slotId, text){
   b.textContent = text;
 }
 
+/* 자정을 넘겨 화면을 열어둔 경우. TODAY 는 로드 시점에 고정되므로 그대로 올리면
+   어제 폴더로 들어가, 관리자 화면에 안 보이고 마감 때 어제분으로 지워진다 */
+function sameDay(){
+  if (MENU.dateStr() === TODAY) return true;
+  alert('날짜가 바뀌었습니다. 화면을 새로 불러온 뒤 다시 촬영해 주세요.');
+  location.reload();
+  return false;
+}
+
 async function upload(slotId, file){
-  /* 자정을 넘겨 화면을 열어둔 경우. TODAY 는 로드 시점에 고정되므로 그대로 올리면
-     어제 폴더로 들어가, 관리자 화면에 안 보이고 마감 때 어제분으로 지워진다 */
-  if (MENU.dateStr() !== TODAY) {
-    alert('날짜가 바뀌었습니다. 화면을 새로 불러온 뒤 다시 촬영해 주세요.');
-    location.reload(); return;
-  }
-  const slot = (SLOTS[MEAL] || []).find(s => s.slotId === slotId);
+  if (!sameDay()) return;
   busy(slotId, '준비 중…');
   let blob;
   try { blob = await PHOTO.shrink(file); }
   catch (e) { busy(slotId, null); alert('사진을 처리하지 못했습니다: ' + e.message); return; }
+  await putPhoto(slotId, blob);
+}
 
+/* 올라간 사진을 1:1 네모에 맞춰 다시 자른다.
+   화면의 사진 칸도, 관리자가 뽑는 인쇄 리포트도 정사각이라 접시가 한쪽으로 치우쳐 찍히면
+   가장자리가 잘린 채로 남는다. 다시 찍으러 가는 대신 이 자리에서 고친다.
+   원본은 getObjectUrl 이 돌려준 blob: 주소라 같은 출처다 — canvas 로 다시 구울 수 있다 */
+async function adjustPhoto(slotId){
+  const have = HAVE[slotId];
+  if (!have || !sameDay()) return;
+  const slot = (SLOTS[MEAL] || []).find(s => s.slotId === slotId);
+  busy(slotId, '사진 여는 중…');
+  let blob;
+  try {
+    if (!have.url) have.url = await GH.getObjectUrl(REPO, have.path);
+    if (!have.url) throw new Error('올린 사진을 찾지 못했습니다');
+    blob = await PHOTO.crop(have.url, { caption: slot ? slot.name : slotId });
+  } catch (e) {
+    busy(slotId, null);
+    alert('사진을 열지 못했습니다: ' + e.message);
+    return;
+  }
+  if (!blob) { busy(slotId, null); return; }   // 취소 — 올라가 있는 사진은 그대로다
+  await putPhoto(slotId, blob);
+}
+
+/* 올리기의 뒷부분. 새로 찍은 사진과 '맞추기' 로 다시 구운 사진이 같은 길을 탄다 */
+async function putPhoto(slotId, blob){
+  const slot = (SLOTS[MEAL] || []).find(s => s.slotId === slotId);
   busy(slotId, '올리는 중…');
   const path = PHOTO.photoPath(TODAY, slotId);
   const msg = PHOTO.uploadMsg(slotId, slot ? slot.name : '');
@@ -341,22 +403,13 @@ async function upload(slotId, file){
       card.querySelector('.st').innerHTML = '<span class="pill ok">완료</span>';
       const box = card.querySelector('.pane.real .ph');
       box.classList.remove('empty');
-      box.innerHTML = '<img data-url="' + slotId + '" src="' + HAVE[slotId].url + '" alt=""'
+      box.innerHTML = '<img data-url="' + esc(slotId) + '" src="' + HAVE[slotId].url + '" alt=""'
         + ' data-zoom="" data-zcap="' + esc(slot ? slot.name : slotId) + '" data-zsub="올린 실물 사진">'
-        + '<div class="acts">'
-        + '<button type="button" class="swap" data-pick="' + slotId
-        + '" title="다시 촬영" aria-label="다시 촬영">&#8635;</button>'
-        + '<button type="button" data-del="' + slotId
-        + '" title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button></div>';
+        + actsHtml(slotId);
       /* 사진이 생겼으니 칸을 누르면 카메라가 아니라 확대다 */
       box.removeAttribute('data-pick');
       box.onclick = null;
-      /* 방금 만든 사진·↻·× 는 renderSlots 의 일괄 바인딩을 못 받는다 — 여기서 직접 건다 */
-      box.querySelector('img').onclick = ev => { ev.stopPropagation(); PHOTO.zoomImg(ev.currentTarget); };
-      const swap = box.querySelector('[data-pick]');
-      if (swap) swap.onclick = ev => { ev.stopPropagation(); card.querySelector('[data-file]').click(); };
-      const del = box.querySelector('[data-del]');
-      if (del) del.onclick = ev => { ev.stopPropagation(); removePhoto(slotId); };
+      bindBox(card, slotId);
       const btn = card.querySelector('.slot-act button');
       btn.textContent = '다시 촬영'; btn.classList.remove('primary');
     }

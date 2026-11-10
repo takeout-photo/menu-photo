@@ -422,6 +422,8 @@ function cardHtml(st, s){
   const canEdit = !READONLY;
   const acts = (have && canEdit)
     ? `<div class="acts">`
+      + `<button type="button" class="fit" data-crop="${key}" title="사진 맞추기 (자를 위치 고치기)" aria-label="사진 맞추기">`
+        + `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 1 6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.1 16 6a2 2 0 0 1 2 2v15"/></svg></button>`
       + `<button type="button" class="swap" data-pick="${key}" title="사진 다시 올리기" aria-label="사진 다시 올리기">&#8635;</button>`
       + `<button type="button" data-del="${key}" title="이 사진 지우기" aria-label="이 사진 지우기">&times;</button>`
       + `</div>`
@@ -483,6 +485,9 @@ function renderCompare(){
       const inp = host.querySelector('[data-file="' + CSS.escape(el.dataset.pick) + '"]');
       if (inp) inp.click(); };
   });
+  host.querySelectorAll('[data-crop]').forEach(el => {
+    el.onclick = ev => { ev.stopPropagation(); adjustPhoto(el.dataset.crop); };
+  });
   host.querySelectorAll('[data-del]').forEach(el => {
     el.onclick = ev => { ev.stopPropagation(); removePhoto(el.dataset.del); };
   });
@@ -540,20 +545,19 @@ function busyPhoto(key, text){
   b.textContent = text;
 }
 
-async function uploadPhoto(key, file){
+/* 지난 날짜에 사진을 끼워 넣으면 그날 기록이 사후에 바뀐다. 게다가 마감 때 어제분으로
+   지워져 흔적만 남는다. 올리기·맞추기는 오늘만 허용한다(지우기는 날짜를 가리지 않는다) */
+function todayOnly(what){
+  if (DATE === MENU.dateStr()) return true;
+  alert('사진은 오늘 날짜에만 ' + what + '.\n날짜를 오늘로 바꾼 뒤 다시 눌러 주세요.');
+  return false;
+}
+
+/* 올리기의 뒷부분. 새로 고른 사진과 '맞추기' 로 다시 구운 사진이 같은 길을 타게
+   떼어 놓았다 — 올라간 뒤 화면을 고치는 코드가 두 벌이 되면 반드시 어긋난다 */
+async function putPhoto(key, blob){
   const { slotId, st, d, slot } = splitKey(key);
   if (!st || !d) return;
-  /* 지난 날짜에 사진을 끼워 넣으면 그날 기록이 사후에 바뀐다. 게다가 마감 때 어제분으로
-     지워져 흔적만 남는다. 올리기는 오늘만 허용한다(지우기는 날짜를 가리지 않는다) */
-  if (DATE !== MENU.dateStr()) {
-    alert('사진은 오늘 날짜에만 올릴 수 있습니다.\n날짜를 오늘로 바꾼 뒤 다시 눌러 주세요.');
-    return;
-  }
-  busyPhoto(key, '준비 중…');
-  let blob;
-  try { blob = await PHOTO.shrink(file); }
-  catch (e) { busyPhoto(key, null); alert('사진을 처리하지 못했습니다: ' + e.message); return; }
-
   busyPhoto(key, '올리는 중…');
   const path = PHOTO.photoPath(DATE, slotId);
   try {
@@ -571,6 +575,42 @@ async function uploadPhoto(key, file){
     denied(e);
     alert(PHOTO.uploadErrText(e, { admin: true }));
   }
+}
+
+async function uploadPhoto(key, file){
+  const { st, d } = splitKey(key);
+  if (!st || !d) return;
+  if (!todayOnly('올릴 수 있습니다')) return;
+  busyPhoto(key, '준비 중…');
+  let blob;
+  try { blob = await PHOTO.shrink(file); }
+  catch (e) { busyPhoto(key, null); alert('사진을 처리하지 못했습니다: ' + e.message); return; }
+  await putPhoto(key, blob);
+}
+
+/* 올라간 사진을 1:1 네모에 맞춰 다시 자른다.
+   카드도 인쇄 리포트도 정사각으로 잘라 보여주기 때문에, 접시가 한쪽으로 치우쳐 찍힌 날은
+   그냥 두면 잘린 채로 남는다. 다시 찍으러 가는 대신 이 자리에서 고친다.
+   원본은 getObjectUrl 이 돌려준 blob: 주소라 같은 출처다 — canvas 로 다시 구울 수 있다 */
+async function adjustPhoto(key){
+  const { slotId, st, d, slot } = splitKey(key);
+  if (!st || !d) return;
+  const have = d.have[slotId]; if (!have) return;
+  if (!todayOnly('고칠 수 있습니다')) return;
+  busyPhoto(key, '사진 여는 중…');
+  let blob;
+  try {
+    if (!have.url) have.url = await GH.getObjectUrl(st.repo, have.path);
+    if (!have.url) throw new Error('저장된 사진을 찾지 못했습니다');
+    blob = await PHOTO.crop(have.url,
+      { caption: (st.cfg.name || st.cfg.store) + ' · ' + (slot ? slot.name : slotId) });
+  } catch (e) {
+    busyPhoto(key, null);
+    alert('사진을 열지 못했습니다: ' + e.message);
+    return;
+  }
+  if (!blob) { busyPhoto(key, null); return; }   // 취소 — 올라가 있는 사진은 그대로다
+  await putPhoto(key, blob);
 }
 
 /* 사진 1장 지우기. 마감의 일괄 삭제와 달리 날짜·식당을 가리지 않는다.

@@ -126,8 +126,10 @@
   border:1px solid rgba(255,255,255,.4);background:rgba(17,20,40,.55);color:#fff;
   font:700 12px/1 var(--font-body);display:grid;place-items:center;cursor:pointer;
   backdrop-filter:blur(3px);transition:.15s}
+.ph .acts button svg{display:block}
+/* 지우기만 붉게, 나머지는 브랜드색 — 되돌릴 수 없는 버튼과 그렇지 않은 버튼을 색으로 가른다 */
 .ph .acts button:hover{background:var(--crit);color:#fff;border-color:transparent}
-.ph .acts button.swap:hover{background:var(--brand)}
+.ph .acts button.swap:hover,.ph .acts button.fit:hover{background:var(--brand)}
 /* 폰에서는 손가락으로 눌러야 해서 좁은 화면에서만 다시 키운다.
    업체 화면은 폰이 주 타깃이고, 관리자도 사내 프록시 때문에 올릴 때는 폰을 쓴다.
    .slots 가 1열이 되는 지점과 같은 기준을 쓴다 */
@@ -171,6 +173,48 @@
   .zoom-x{right:8px;top:8px;width:38px;height:38px}
 }
 @media(prefers-reduced-motion:reduce){.zoom-spin{animation:none}}
+
+/* ---------- 1:1 자르기 ----------
+   확대 보기(.zoom)와 같은 방식으로 직접 그린다. 그 위에 떠야 하므로 z-index 가 한 칸 높다.
+   인쇄에는 안 나간다(.no-print). */
+.crop{position:fixed;inset:0;z-index:130;display:grid;place-items:center;padding:16px}
+.crop[hidden]{display:none}
+.crop-bd{position:absolute;inset:0;background:rgba(12,14,32,.82);backdrop-filter:blur(5px)}
+.crop-box{position:relative;background:var(--surface);border-radius:18px;padding:16px;
+  display:grid;gap:12px;justify-items:center;max-width:min(94vw,470px);
+  box-shadow:0 26px 64px rgba(0,0,0,.45)}
+.crop-hd{display:grid;gap:2px;text-align:center;width:100%;min-width:0}
+.crop-hd b{font:700 15px/1.4 var(--font-body)}
+.crop-hd .crop-cap{font:600 12px var(--font-body);color:var(--sub);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* touch-action:none 이 없으면 폰에서 끌기가 페이지 스크롤로 먹힌다 */
+.crop-stage{position:relative;width:min(84vw,400px);aspect-ratio:1/1;border-radius:14px;
+  overflow:hidden;background:#eef0f8;touch-action:none}
+.crop-stage canvas{display:block;width:100%;height:100%;cursor:grab}
+.crop-stage canvas:active{cursor:grabbing}
+/* 삼분할 안내선. 접시를 가운데 두는 데만 쓰므로 아주 옅게 긋는다 */
+.crop-grid{position:absolute;inset:0;pointer-events:none;border-radius:14px;
+  box-shadow:inset 0 0 0 2px rgba(91,91,240,.5);
+  background:
+    linear-gradient(to right,transparent calc(33.333% - 1px),rgba(255,255,255,.45) calc(33.333% - 1px),rgba(255,255,255,.45) 33.333%,transparent 33.333%),
+    linear-gradient(to right,transparent calc(66.666% - 1px),rgba(255,255,255,.45) calc(66.666% - 1px),rgba(255,255,255,.45) 66.666%,transparent 66.666%),
+    linear-gradient(to bottom,transparent calc(33.333% - 1px),rgba(255,255,255,.45) calc(33.333% - 1px),rgba(255,255,255,.45) 33.333%,transparent 33.333%),
+    linear-gradient(to bottom,transparent calc(66.666% - 1px),rgba(255,255,255,.45) calc(66.666% - 1px),rgba(255,255,255,.45) 66.666%,transparent 66.666%)}
+.crop-tip{margin:0;font:600 11.5px/1.55 var(--font-body);color:var(--sub);text-align:center}
+.crop-tools{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.crop-tools button{padding:7px 11px;font-size:12px;border-radius:11px}
+.crop-tools button.on{background:var(--brand);border-color:transparent;color:#fff}
+.crop-tools button.on:hover{background:var(--brand);color:#fff}
+.crop-act{display:flex;gap:8px;width:100%}
+.crop-act button{flex:1;padding:11px;font-size:13.5px;font-weight:700;border-radius:13px}
+.crop-act button.primary{background:linear-gradient(120deg,var(--brand),var(--brand2));
+  color:#fff;border-color:transparent}
+.crop-act button.primary:hover{color:#fff;opacity:.94}
+@media(max-width:719px){
+  .crop{padding:10px}
+  .crop-box{padding:13px;gap:10px}
+  .crop-stage{width:min(88vw,400px)}
+}
 
 /* ---------- 진행 바 ---------- */
 .prog{height:7px;border-radius:99px;background:#dfe2f4;overflow:hidden;margin:10px 0 6px}
